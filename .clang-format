@@ -1,0 +1,26 @@
+---
+BasedOnStyle: Google
+IndentWidth: 2
+ColumnLimit: 120
+AlignConsecutiveAssignments:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false
+AlignConsecutiveBitFields:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false
+AlignConsecutiveDeclarations:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: false
+# AlignConsecutiveMacros: true
+# AlignAfterOpenBracket: AlwaysBreak
+# AlignArrayOfStructures: None
+BracedInitializerIndentWidth: 2
+ContinuationIndentWidth: 4
+DerivePointerAlignment: false
+PointerAlignment: Right
+QualifierAlignment: Right
+SpaceAroundPointerQualifiers: Default
+# BinPackArguments: false

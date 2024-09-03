@@ -1,0 +1,111 @@
+include "shared.fbs";
+
+namespace nanokv.packet;
+
+table ReadRange {
+  start: [ubyte];
+  end: [ubyte];
+  limit: uint;
+  exact: bool;
+  reverse: bool;
+}
+
+table SnapshotRead {
+  requests: [ReadRange];
+}
+
+root_type SnapshotRead;
+
+table KvEntry {
+  key: [ubyte];
+  value: [ubyte];
+  encoding: shared.ValueEncoding;
+  version: ulong;
+}
+
+table ReadRangeOutput {
+  values: [KvEntry];
+}
+
+table SnapshotReadOutput {
+  ranges: [ReadRangeOutput];
+}
+
+table Check {
+  key: [ubyte];
+  version: ulong;
+}
+
+enum MutationType: ubyte {
+  UNSPECIFIED = 0,
+  SET = 1,
+  DELETE = 2,
+}
+
+table Mutation {
+  type: MutationType;
+  key: [ubyte];
+  value: [ubyte];
+  encoding: shared.ValueEncoding;
+  expired_at: ulong;
+}
+
+table Enqueue {
+  key: [ubyte];
+  value: [ubyte];
+  encoding: shared.ValueEncoding;
+  schedule: ulong;
+}
+
+table Dequeue {
+  key: [ubyte];
+  schedule: ulong;
+  sequence: ulong;
+}
+
+table AtomicWrite {
+  checks: [Check];
+  mutations: [Mutation];
+  enqueues: [Enqueue];
+  dequeues: [Dequeue];
+}
+
+table AtomicWriteOutput {
+  ok: bool;
+  version: ulong;
+}
+
+table WatchKey {
+  key: [ubyte];
+}
+
+table Watch {
+  id: int;
+  keys: [WatchKey];
+}
+
+table WatchOutput {
+  id: int;
+  values: [KvEntry];
+}
+
+table ListenKey {
+  key: [ubyte];
+}
+
+table Listen {
+  added: [ListenKey];
+  removed: [ListenKey];
+}
+
+table QueueEntry {
+  key: [ubyte];
+  value: [ubyte];
+  encoding: shared.ValueEncoding;
+  schedule: ulong;
+  sequence: ulong;
+}
+
+table ListenOutput {
+  entries: [QueueEntry];
+}

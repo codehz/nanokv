@@ -1,0 +1,15 @@
+include "shared.fbs";
+
+namespace nanokv.internal;
+
+table ValueHolder {
+  value: [ubyte];
+  encoding: shared.ValueEncoding;
+  version: ulong;
+  expired_at: ulong;
+}
+
+table QueueValueHolder {
+  value: [ubyte];
+  encoding: shared.ValueEncoding;
+}

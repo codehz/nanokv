@@ -1,0 +1,12 @@
+{
+  "name": "nanokv",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": { "@types/bun": "^1.1.8" },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "flatbuffers": "^24.3.25"
+  }
+}
