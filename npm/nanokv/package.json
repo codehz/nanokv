@@ -1,8 +1,26 @@
 {
   "name": "nanokv",
+  "version": "0.0.1",
   "module": "index.ts",
   "type": "module",
-  "devDependencies": { "@types/bun": "^1.1.8" },
+  "description": "A simple kv implementation.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codehz/nanokv.git"
+  },
+  "license": "MIT",
+  "author": {
+    "name": "CodeHz",
+    "email": "git@hertz.moe"
+  },
+  "keywords": [
+    "kv",
+    "nanokv"
+  ],
+  "devDependencies": {
+    "@types/bun": "^1.1.8",
+    "bun-plugin-dts": "^0.2.3"
+  },
   "peerDependencies": {
     "typescript": "^5.0.0"
   },

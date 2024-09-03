@@ -3,3 +3,4 @@ build
 db
 .vscode
 compile_commands.json
+npm/dist

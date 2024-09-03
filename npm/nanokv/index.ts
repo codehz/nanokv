@@ -1,10 +1,10 @@
+import { randomBytes } from "node:crypto";
 import { packKey, unpackKey } from "./kv_key";
 import { MutationType } from "./packet";
 import {
   decodeAtomicWriteOutput,
   decodeListenOutputRaw,
   decodeSnapshotReadOutput,
-  decodeWatchOutput,
   decodeWatchOutputRaw,
   encodeAtomicWrite,
   encodeListen,
@@ -28,30 +28,30 @@ import type {
   KvQueueEntry,
 } from "./types";
 import { WebSocketConnection } from "./ws";
-import { randomBytes } from "node:crypto";
+export * from "./types";
 
 const START = new Uint8Array([0x01]);
 const END = new Uint8Array([0xff]);
 
-type WithKey<
+type _KvWithKey<
   X extends KvEntry | KvQueueEntry,
   K extends X["key"]
 > = X extends unknown ? (K extends X["key"] ? X : never) : never;
-type Prefix<X extends readonly unknown[]> = X extends [unknown, ...infer Xs]
-  ? [] | [X[0]] | [X[0], ...Prefix<Xs>]
+type _KvPrefix<X extends readonly unknown[]> = X extends [unknown, ...infer Xs]
+  ? [] | [X[0]] | [X[0], ..._KvPrefix<Xs>]
   : [];
-type FindPrefix<
+type _KvFindPrefix<
   X extends KvEntry | KvQueueEntry,
-  K extends Prefix<X["key"]>
-> = X extends unknown ? (K extends Prefix<X["key"]> ? X : never) : never;
+  K extends _KvPrefix<X["key"]>
+> = X extends unknown ? (K extends _KvPrefix<X["key"]> ? X : never) : never;
 
-type EntryNotFound<X extends KvEntry> = {
+type _KvEntryNotFound<X extends KvEntry> = {
   key: X["key"];
   value: undefined;
   version: undefined;
 };
 
-type MaybeEntry<X extends KvEntry> = X | EntryNotFound<X>;
+type _KvMaybeEntry<X extends KvEntry> = X | _KvEntryNotFound<X>;
 
 class WatchState {
   entry: KvEntryMaybe<any, any>;
@@ -207,24 +207,26 @@ export class NanoKV<
     }
   }
 
-  async get<K extends E["key"]>(key: K): Promise<MaybeEntry<WithKey<E, K>>> {
+  async get<K extends E["key"]>(
+    key: K
+  ): Promise<_KvMaybeEntry<_KvWithKey<E, K>>> {
     const [[entry]] = await this.#snapshot_read([{ start: key, exact: true }]);
     if (entry)
       return {
         key,
         value: entry.value as any,
         version: entry.version as bigint,
-      } as WithKey<E, K>;
+      } as _KvWithKey<E, K>;
     return {
       key,
       value: undefined,
       version: undefined,
-    } as EntryNotFound<WithKey<E, K>>;
+    } as _KvEntryNotFound<_KvWithKey<E, K>>;
   }
 
   async getMany<const Ks extends readonly E["key"][]>(
     ...keys: Ks
-  ): Promise<{ [N in keyof Ks]: MaybeEntry<WithKey<E, Ks[N]>> }> {
+  ): Promise<{ [N in keyof Ks]: _KvMaybeEntry<_KvWithKey<E, Ks[N]>> }> {
     const result = await this.#snapshot_read(
       keys.map((key) => ({ start: key, exact: true } as const))
     );
@@ -245,7 +247,7 @@ export class NanoKV<
 
   async set<K extends E["key"]>(
     key: K,
-    value: WithKey<E, K>["value"],
+    value: _KvWithKey<E, K>["value"],
     { expireIn }: { expireIn?: number } = {}
   ): Promise<{ ok: boolean; version: bigint }> {
     return await this.#atomic_write({
@@ -268,7 +270,7 @@ export class NanoKV<
     });
   }
 
-  list<K extends Prefix<E["key"]>>(
+  list<K extends _KvPrefix<E["key"]>>(
     selector: KvListSelector<K>,
     {
       limit = 500,
@@ -276,7 +278,7 @@ export class NanoKV<
       batchSize = 128,
       cursor,
     }: KvListOptions = {}
-  ): ReadableStream<FindPrefix<E, K>[]> {
+  ): ReadableStream<_KvFindPrefix<E, K>[]> {
     const base =
       "prefix" in selector
         ? {
@@ -288,7 +290,7 @@ export class NanoKV<
     if (batchSize <= 0 || batchSize >= 1024 || !Number.isFinite(batchSize)) {
       batchSize = 1024;
     }
-    return new ReadableStream<FindPrefix<E, K>[]>(
+    return new ReadableStream<_KvFindPrefix<E, K>[]>(
       {
         pull: async (controller) => {
           const [values] = await this.#snapshot_read([
@@ -330,13 +332,13 @@ export class NanoKV<
 
   watch<const Ks extends readonly E["key"][]>(
     ...keys: Ks
-  ): ReadableStream<{ [N in keyof Ks]: MaybeEntry<WithKey<E, Ks[N]>> }> {
+  ): ReadableStream<{ [N in keyof Ks]: _KvMaybeEntry<_KvWithKey<E, Ks[N]>> }> {
     const reactor = new Reactor<void>();
     const cached = new Map<string, Uint8Array>();
     const id = this.#genWatchId();
     this.#firstWatch.set(id, reactor);
     return new ReadableStream<{
-      [N in keyof Ks]: MaybeEntry<WithKey<E, Ks[N]>>;
+      [N in keyof Ks]: _KvMaybeEntry<_KvWithKey<E, Ks[N]>>;
     }>(
       {
         start: () => {
@@ -391,12 +393,14 @@ export class NanoKV<
 
   listen<const Ks extends readonly Q["key"][]>(
     ...keys: Ks
-  ): ReadableStream<{ [N in keyof Ks]: WithKey<Q, Ks[N]> }[keyof Ks & number]> {
+  ): ReadableStream<
+    { [N in keyof Ks]: _KvWithKey<Q, Ks[N]> }[keyof Ks & number]
+  > {
     const state = new ListenState();
     const cached = new Map<string, Uint8Array>();
     const packeds: Uint8Array[] = [];
     return new ReadableStream<
-      { [N in keyof Ks]: WithKey<Q, Ks[N]> }[keyof Ks & number]
+      { [N in keyof Ks]: _KvWithKey<Q, Ks[N]> }[keyof Ks & number]
     >(
       {
         start: () => {
@@ -473,7 +477,7 @@ export class AtomicOperation<
 
   set<K extends E["key"]>(
     key: K,
-    value: WithKey<E, K>["value"],
+    value: _KvWithKey<E, K>["value"],
     { expireIn }: { expireIn?: number; withVersionstampSuffix?: boolean } = {}
   ): this {
     this.#mutations.push({
@@ -492,7 +496,7 @@ export class AtomicOperation<
 
   enqueue<K extends Q["key"]>(
     key: K,
-    value: WithKey<Q, K>["value"],
+    value: _KvWithKey<Q, K>["value"],
     {
       delay = 0,
       schedule = delay === 0 ? undefined : Date.now() + delay,
@@ -520,65 +524,5 @@ export class AtomicOperation<
     });
   }
 }
-
-const kv = new NanoKV<
-  KvEntry<["test", number], string>,
-  KvQueueEntry<["test-queue"], string>
->("http://127.0.0.1:2256");
-
-async function watch(signal: AbortSignal) {
-  const watcher = kv.watch(["test", 1], ["test", 2]);
-  const reader = watcher.getReader();
-  signal.addEventListener("abort", () => {
-    reader.cancel();
-  });
-  (async () => {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      console.log("update", value);
-    }
-  })();
-}
-
-async function listen(signal: AbortSignal) {
-  const reader = kv.listen(["test-queue"]).getReader();
-  signal.addEventListener("abort", () => {
-    reader.cancel();
-  });
-  (async () => {
-    while (true) {
-      const { done, value } = await reader.readMany();
-      if (done) break;
-      console.log("listen", value);
-      await kv
-        .atomic()
-        .dequeue(...value)
-        .commit();
-    }
-  })();
-}
-
-async function read() {
-  console.log(await kv.getMany(["test", 1], ["test", 2]));
-}
-
-const controller = new AbortController();
-await watch(controller.signal);
-await listen(controller.signal);
-await kv
-  .atomic()
-  .set(["test", 2], "123", { expireIn: 900 })
-  .set(["test", 1], "123", { expireIn: 100 })
-  .enqueue(["test-queue"], "boom", { delay: 700 })
-  .commit();
-await read();
-await Bun.sleep(500);
-await kv.atomic().enqueue(["test-queue"], "boom2").commit();
-await read();
-await Bun.sleep(1000);
-await read();
-await Bun.sleep(1000);
-controller.abort();
 
 // console.log(res.status, res.statusText);
