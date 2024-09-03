@@ -20,7 +20,6 @@
 #include "internal_generated.h"
 #include "kverror.h"
 #include "now.h"
-#include "ulid/ulid.h"
 
 namespace nanokv {
 using flatbuffers::FlatBufferBuilder;

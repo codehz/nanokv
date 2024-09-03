@@ -6,8 +6,6 @@
 #include <concepts>
 #include <string_view>
 
-#include "ulid/ulid.h"
-
 namespace nanokv {
 
 template <typename T, typename R>
@@ -60,9 +58,6 @@ class OwnedSlice {
       } else if constexpr (is_enum<T>) {
         auto underlying = static_cast<std::underlying_type_t<T>>(value);
         return this->operator=(underlying);
-      } else if constexpr (std::same_as<T, ulid::ULID>) {
-        ulid::MarshalBinaryTo(value, ptr + pos);
-        return pos + 16;
       } else if constexpr (SliceLike<T, uint8_t>) {
         std::memcpy(ptr + pos, value.data(), value.size());
         return pos + value.size();
