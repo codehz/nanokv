@@ -18,10 +18,6 @@ jobs:
           - os: macos-latest
             toolchain: clang
           - os: windows-latest
-            toolchain: clang
-          - os: windows-latest
-            toolchain: mingw
-          - os: windows-latest
             toolchain: msvc
         # os: [ubuntu-latest, macos-latest, windows-latest]
       fail-fast: false
