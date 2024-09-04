@@ -13,13 +13,25 @@ jobs:
         cfg:
           - os: ubuntu-latest
             toolchain: gcc
+            arch: i386
+          - os: ubuntu-latest
+            toolchain: gcc
+            arch: x86_64
           - os: ubuntu-latest
             toolchain: clang
+            arch: i386
+          - os: ubuntu-latest
+            toolchain: clang
+            arch: x86_64
           - os: macos-latest
             toolchain: clang
+            arch: x86_64
           - os: windows-latest
             toolchain: msvc
-        # os: [ubuntu-latest, macos-latest, windows-latest]
+            arch: x86
+          - os: windows-latest
+            toolchain: msvc
+            arch: x64
       fail-fast: false
     runs-on: ${{ matrix.cfg.os }}
 
@@ -37,8 +49,8 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.XMAKE_GLOBALDIR }}/.xmake/packages
-          key: xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}
-      - name: Set toolchain ${{ matrix.cfg.toolchain }}
-        run: xmake f -y --toolchain=${{ matrix.cfg.toolchain }}
+          key: xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}
+      - name: Setup ${{ matrix.cfg.toolchain }} ${{ matrix.cfg.arch }}
+        run: xmake f -y --toolchain=${{ matrix.cfg.toolchain }} --arch=${{ matrix.cfg.arch }}
       - name: Build
         run: xmake -vy
