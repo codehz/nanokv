@@ -2,6 +2,7 @@
 #include <flatbuffers/flatbuffers.h>
 #include <leveldb/db.h>
 
+#include <algorithm>
 #include <bit>
 #include <concepts>
 #include <string_view>
@@ -31,10 +32,17 @@ inline static flatbuffers::Offset<flatbuffers::Vector<uint8_t>> CloneVector(flat
 }
 
 inline static constexpr auto big_endian(std::integral auto value) {
-  if constexpr (std::endian::native == std::endian::little)
+  if constexpr (std::endian::native == std::endian::little) {
+#ifdef __cpp_lib_byteswap
     return std::byteswap(value);
-  else
+#else
+    auto value_representation = std::bit_cast<std::array<std::byte, sizeof value>>(value);
+    std::ranges::reverse(value_representation);
+    return std::bit_cast<std::remove_cvref_t<decltype(value)>>(value_representation);
+#endif
+  } else {
     return value;
+  }
 }
 
 template <typename T>
