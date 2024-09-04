@@ -45,6 +45,9 @@ jobs:
         with:
           path: ${{ env.XMAKE_GLOBALDIR }}/.xmake/packages
           key: xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}-${{ hashFiles('xmake.lua') }}
+          restore-keys: |
+            xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}-${{ hashFiles('xmake.lua') }}
+            xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}-
       - name: Setup ${{ matrix.cfg.toolchain }} ${{ matrix.cfg.arch }}
         run: xmake f -y --toolchain=${{ matrix.cfg.toolchain }} --arch=${{ matrix.cfg.arch }} --mode=${{ matrix.mode }}
       - name: Build
