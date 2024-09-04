@@ -2,14 +2,8 @@ import { randomBytes } from "node:crypto";
 import { packKey, unpackKey } from "./kv_key";
 import { MutationType } from "./packet";
 import {
-  decodeAtomicWriteOutput,
-  decodeListenOutputRaw,
-  decodeSnapshotReadOutput,
-  decodeWatchOutputRaw,
-  encodeAtomicWrite,
-  encodeListen,
-  encodeSnapshotRead,
-  encodeWatch,
+  Protocol,
+  type ProtocolEncoding,
   type RawCheck,
   type RawDequeue,
   type RawEnqueue,
@@ -101,17 +95,22 @@ export class NanoKV<
   #firstWatch = new Map<number, Reactor<void>>();
   #listen: WebSocketConnection;
   #queues = new Map<string, ListenState>();
-  constructor(public readonly endpoint: string) {
+  #protocol: Protocol;
+  constructor(
+    public readonly endpoint: string,
+    options: { encoding?: ProtocolEncoding } = {}
+  ) {
+    this.#protocol = new Protocol(options.encoding);
     this.#watch = new WebSocketConnection(
       endpoint + "/watch",
       (send) => {
         const keys = [...this.#subscriptions.values()].map(
           ({ packed }) => packed
         );
-        send(encodeWatch({ id: -1, keys }));
+        send(this.#protocol.encodeWatch({ id: -1, keys }));
       },
       (data) => {
-        const { id, values } = decodeWatchOutputRaw(data);
+        const { id, values } = this.#protocol.decodeWatchOutputRaw(data);
         for (const { key, value, version } of values) {
           const stringified = Buffer.from(key).toString("base64");
           const subscription = this.#subscriptions.get(stringified);
@@ -153,10 +152,10 @@ export class NanoKV<
         const added = [...this.#queues.keys()].map((key) =>
           Buffer.from(key, "base64")
         );
-        send(encodeListen({ added }));
+        send(this.#protocol.encodeListen({ added }));
       },
       (data) => {
-        const entries = decodeListenOutputRaw(data);
+        const entries = this.#protocol.decodeListenOutputRaw(data);
         const triggered = new Set<ListenState>();
         for (const { key, schedule, sequence, value } of entries) {
           const stringified = Buffer.from(key).toString("base64");
@@ -175,14 +174,14 @@ export class NanoKV<
   }
 
   async #snapshot_read(ranges: RawReadRange[]): Promise<RawKvEntry[][]> {
-    const request = encodeSnapshotRead(ranges);
+    const request = this.#protocol.encodeSnapshotRead(ranges);
     const res = await fetch(`${this.endpoint}/snapshot_read`, {
       method: "POST",
       body: request,
     });
     if (res.status === 200) {
       const response = await res.arrayBuffer();
-      return decodeSnapshotReadOutput(new Uint8Array(response));
+      return this.#protocol.decodeSnapshotReadOutput(new Uint8Array(response));
     } else {
       throw new Error(await res.text());
     }
@@ -196,14 +195,14 @@ export class NanoKV<
     ok: boolean;
     version: bigint;
   }> {
-    const request = encodeAtomicWrite(param);
+    const request = this.#protocol.encodeAtomicWrite(param);
     const res = await fetch(`${this.endpoint}/atomic_write`, {
       method: "POST",
       body: request,
     });
     if (res.status === 200) {
       const response = await res.arrayBuffer();
-      return decodeAtomicWriteOutput(new Uint8Array(response));
+      return this.#protocol.decodeAtomicWriteOutput(new Uint8Array(response));
     } else {
       throw new Error(await res.text());
     }
@@ -361,7 +360,9 @@ export class NanoKV<
             }
           }
           this.#watch.open();
-          this.#watch.trySend(() => encodeWatch({ id, keys: packeds }));
+          this.#watch.trySend(() =>
+            this.#protocol.encodeWatch({ id, keys: packeds })
+          );
         },
         pull: async (controller) => {
           await reactor;
@@ -382,7 +383,9 @@ export class NanoKV<
             }
           }
           if (packeds.length) {
-            this.#watch.trySend(() => encodeWatch({ id: 0, keys: packeds }));
+            this.#watch.trySend(() =>
+              this.#protocol.encodeWatch({ id: 0, keys: packeds })
+            );
           }
           if (this.#subscriptions.size === 0) {
             this.#watch.close();
@@ -417,7 +420,9 @@ export class NanoKV<
             this.#queues.set(stringified, state);
           }
           this.#listen.open();
-          this.#listen.trySend(() => encodeListen({ added: packeds }));
+          this.#listen.trySend(() =>
+            this.#protocol.encodeListen({ added: packeds })
+          );
         },
         pull: async (controller) => {
           await state.reactor;
@@ -428,7 +433,9 @@ export class NanoKV<
             this.#queues.delete(key);
           }
           if (packeds.length) {
-            this.#watch.trySend(() => encodeListen({ removed: packeds }));
+            this.#watch.trySend(() =>
+              this.#protocol.encodeListen({ removed: packeds })
+            );
           }
           if (this.#queues.size === 0) {
             this.#listen.close();
@@ -448,6 +455,8 @@ export class AtomicOperation<
   #mutations: RawMutation[] = [];
   #enqueues: RawEnqueue[] = [];
   #dequeues: RawDequeue[] = [];
+
+  /** @private */
   #committer: (param: {
     checks: RawCheck[];
     mutations: RawMutation[];
@@ -526,5 +535,3 @@ export class AtomicOperation<
     });
   }
 }
-
-// console.log(res.status, res.statusText);

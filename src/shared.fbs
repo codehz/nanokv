@@ -2,6 +2,6 @@ namespace nanokv.shared;
 
 enum ValueEncoding: ubyte {
   BYTES = 0,
-  SERIALIZED = 1,
-  LE64 = 2,
+  JSON = 1,
+  SERIALIZED = 2,
 }

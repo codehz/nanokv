@@ -4,6 +4,6 @@
 
 export enum ValueEncoding {
   BYTES = 0,
-  SERIALIZED = 1,
-  LE64 = 2
+  JSON = 1,
+  SERIALIZED = 2
 }

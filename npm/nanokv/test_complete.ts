@@ -1,4 +1,3 @@
-import { expect, test } from "bun:test";
 import { NanoKV, type KvEntry, type KvQueueEntry } from ".";
 
 const kv = new NanoKV<
