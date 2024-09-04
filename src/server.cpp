@@ -80,15 +80,16 @@ struct TemplatedPolyApp : PolyApp, uWS::TemplatedApp<SSL, TemplatedPolyApp<SSL>>
     FlatBufferBuilder builder;
     for (auto &watch : this->watches) {
       std::vector<Offset<packet::KvEntry>> entries;
-      watch->getUserData()->intersection(*updates, FnIter([&](UpdateMap::value_type const &pair) {
-        if (pair.second) {
-          entries.push_back(packet::CreateKvEntry(builder, CloneVector(builder, pair.first),
-                                                  CloneVector(builder, pair.second->value), pair.second->encoding,
-                                                  pair.second->version));
-        } else {
-          entries.push_back(packet::CreateKvEntry(builder, CloneVector(builder, pair.first)));
-        }
-      }));
+      watch->getUserData()->intersection(
+          *updates, FnIter([target = std::addressof(entries)](UpdateMap::value_type const &pair) {
+            if (pair.second) {
+              target->push_back(packet::CreateKvEntry(builder, CloneVector(builder, pair.first),
+                                                      CloneVector(builder, pair.second->value), pair.second->encoding,
+                                                      pair.second->version));
+            } else {
+              target->push_back(packet::CreateKvEntry(builder, CloneVector(builder, pair.first)));
+            }
+          }));
       auto dbg = updates->begin()->first;
       if (!entries.empty()) {
         builder.Finish(packet::CreateWatchOutput(builder, 0, builder.CreateVector(entries)));
