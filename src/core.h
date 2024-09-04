@@ -2,6 +2,7 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
+#include <string_view>
 #include <unordered_map>
 
 #include "cutils.h"
@@ -10,6 +11,20 @@
 #include "storage.h"
 
 namespace nanokv {
+
+struct CoreOptions final {
+  std::string                db_path;
+  std::optional<uint32_t>    port;
+  std::optional<uint32_t>    threads;
+  std::optional<std::string> cert;
+  std::optional<std::string> key;
+  std::optional<std::string> passphrase;
+  std::optional<std::string> ssl_ciphers;
+
+  ClusterOptions cluster;
+
+  ClusterOptions const &init_cluster() &;
+};
 
 class Core;
 
@@ -41,7 +56,7 @@ class Core {
   void check_queues(us_timer_t *);
 
  public:
-  Core();
+  Core(CoreOptions &opts);
 
   void run();
   void stop();

@@ -15,6 +15,22 @@
 
 namespace nanokv {
 
+struct ServerOptions final {
+  struct SSLOptions {
+    char const *key;
+    char const *cert;
+    char const *passphrase;
+    char const *ciphers;
+  };
+  uint16_t                  port;
+  std::optional<SSLOptions> ssl;
+};
+
+struct ClusterOptions final {
+  ServerOptions server;
+  size_t        num_servers;
+};
+
 class ServerCluster;
 class Server;
 
@@ -25,7 +41,7 @@ struct PolyApp {
 };
 
 template <typename T>
-inline void initApp(Server *server, T &app);
+inline void initApp(Server *server, T &app, uint16_t port);
 
 class Server {
  protected:
@@ -35,13 +51,13 @@ class Server {
   std::thread    thread;
 
  public:
-  Server(ServerCluster *cluster);
+  Server(ServerCluster *cluster, ServerOptions const &opts);
   void close();
   void join();
   void defer(uWS::MoveOnlyFunction<void()> &&cb);
 
   template <typename T>
-  friend void initApp(Server *server, T &app);
+  friend void initApp(Server *server, T &app, uint16_t port);
   friend class ServerCluster;
 };
 
@@ -53,7 +69,7 @@ class ServerCluster {
   std::mutex       queues_mutex;
   QueueListenerMap active_queues;
 
-  ServerCluster(size_t num_servers);
+  ServerCluster(ClusterOptions const &);
   void dispatch_updates(std::shared_ptr<UpdateMap> &&updates);
   void dispatch_queues(std::shared_ptr<EnqueueMap> &&enqueues);
   void join();

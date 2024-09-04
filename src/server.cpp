@@ -47,6 +47,7 @@ class WatchState {
 
 template <bool SSL>
 struct TemplatedPolyApp : PolyApp, uWS::TemplatedApp<SSL, TemplatedPolyApp<SSL>> {
+  using uWS::TemplatedApp<SSL, TemplatedPolyApp<SSL>>::TemplatedApp;
   std::set<uWS::WebSocket<SSL, true, WatchState> *> watches;
 
   struct QueueState : QueueListener {
@@ -107,14 +108,27 @@ struct TemplatedPolyApp : PolyApp, uWS::TemplatedApp<SSL, TemplatedPolyApp<SSL>>
 using TCPApp = TemplatedPolyApp<false>;
 using SSLApp = TemplatedPolyApp<true>;
 
-Server::Server(ServerCluster *cluster)
-    : cluster{cluster}, thread{[this]() {
+Server::Server(ServerCluster *cluster, ServerOptions const &opts)
+    : cluster{cluster}, thread{[this, &opts]() {
         loop = uWS::Loop::get();
-        TCPApp app;
-        initApp(this, app);
-        this->app = &app;
-        app.run();
-        this->app = nullptr;
+        if (opts.ssl) {
+          SSLApp app{{
+            .key_file_name  = opts.ssl->key,
+            .cert_file_name = opts.ssl->cert,
+            .passphrase     = opts.ssl->passphrase,
+            .ssl_ciphers    = opts.ssl->ciphers,
+          }};
+          initApp(this, app, opts.port);
+          this->app = &app;
+          app.run();
+          this->app = nullptr;
+        } else {
+          TCPApp app;
+          initApp(this, app, opts.port);
+          this->app = &app;
+          app.run();
+          this->app = nullptr;
+        }
       }} {}
 
 void Server::join() { thread.join(); }
@@ -122,7 +136,7 @@ void Server::join() { thread.join(); }
 void Server::defer(uWS::MoveOnlyFunction<void()> &&cb) { loop->defer(std::move(cb)); }
 
 template <typename T>
-inline void initApp(Server *server, T &app) {
+inline void initApp(Server *server, T &app, uint16_t port) {
   using QueueState = typename T::QueueState;
   app.post("/snapshot_read",
            [](auto res, auto req) {
@@ -299,11 +313,11 @@ inline void initApp(Server *server, T &app) {
                            }
                          },
                      .close = [&app](auto *ws, int code, std::string_view message) { app.watches.erase(ws); }})
-      .listen(2256, [](auto *listen_socket) {
+      .listen(port, [=](auto *listen_socket) {
         if (listen_socket) {
-          spdlog::info("Listening on port {}", 2256);
+          spdlog::info("Listening on port {}", port);
         } else {
-          spdlog::info("Failed to listen on port {}", 2256);
+          spdlog::info("Failed to listen on port {}", port);
         }
       });
 }
@@ -314,10 +328,10 @@ void Server::close() {
   });
 }
 
-ServerCluster::ServerCluster(size_t num_servers) {
-  servers.reserve(num_servers);
-  for (size_t i = 0; i < num_servers; i++) {
-    servers.emplace_back(this);
+ServerCluster::ServerCluster(ClusterOptions const &opts) {
+  servers.reserve(opts.num_servers);
+  for (size_t i = 0; i < opts.num_servers; i++) {
+    servers.emplace_back(this, opts.server);
   }
 }
 void ServerCluster::dispatch_updates(std::shared_ptr<UpdateMap> &&updates) {

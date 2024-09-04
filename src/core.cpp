@@ -8,6 +8,20 @@
 
 namespace nanokv {
 
+ClusterOptions const &CoreOptions::init_cluster() & {
+  cluster.server.port = port.value_or(2256);
+  if (cert && key) {
+    cluster.server.ssl = nanokv::ServerOptions::SSLOptions{
+      .key        = key->c_str(),
+      .cert       = cert->c_str(),
+      .passphrase = passphrase ? passphrase->c_str() : nullptr,
+      .ciphers    = ssl_ciphers ? ssl_ciphers->c_str() : nullptr,
+    };
+  }
+  cluster.num_servers = std::max(1u, threads.value_or(std::thread::hardware_concurrency()) - 1);
+  return cluster;
+}
+
 using CoreDelegate  = cdelegate<Core *, us_loop_ext>;
 using TimerDelegate = cdelegate<Core *, us_timer_ext>;
 
@@ -38,11 +52,11 @@ bool CoreTimer::need_schedule(uint64_t target) {
 
 void CoreTimer::close() { us_timer_close(timer); }
 
-Core::Core()
+Core::Core(CoreOptions &opts)
     : loop(us_create_loop(
           nullptr, CoreDelegate::method<&Core::wakeup_callback>, [](auto) {}, [](auto) {}, sizeof(Core *))),
-      storage(this, "db"),
-      cluster(std::max(1u, std::thread::hardware_concurrency() - 1)),
+      storage(this, opts.db_path.c_str()),
+      cluster(opts.init_cluster()),
       key_expires_timer(this, TimerDelegate::method<&Core::cleanup_expired_keys>),
       queue_timer(this, TimerDelegate::method<&Core::check_queues>) {
   cext(us_loop_ext(loop)) = this;
