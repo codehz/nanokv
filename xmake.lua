@@ -1,12 +1,21 @@
-if is_plat("windows") then
-  add_requireconfs("uwebsockets.usockets", {configs = {ssl = "openssl"}})
-else
-  add_requireconfs("uwebsockets.usockets", {configs = {ssl = "openssl3"}})
+option("backward", {default = false})
+option("ssl", {default = true})
+
+if has_config("ssl") then
+  if is_plat("windows") then
+    add_requireconfs("uwebsockets.usockets", {configs = {ssl = "openssl"}})
+  else
+    add_requireconfs("uwebsockets.usockets", {configs = {ssl = "openssl3"}})
+  end
 end
 add_requireconfs("uwebsockets", {configs = {zip = true, deflate = true}})
 add_requires("uwebsockets", "leveldb", "spdlog", "flatbuffers", "ctrl-c", "argz")
-add_requires("backward-cpp", {configs = {stack_details = "backtrace_symbol"}, optional = true})
-add_requires("atomic", {system = true, optional = true})
+if has_config("backward") then
+  add_requires("backward-cpp", {configs = {stack_details = "backtrace_symbol"}})
+end
+if is_plat("linux") then
+  add_requires("atomic", {system = true, optional = true})
+end
 
 add_rules("mode.release", "mode.debug")
 set_languages("c++23")
@@ -33,9 +42,6 @@ rule("flatc")
     batchcmds:set_depcache(target:dependfile(headersfile))
   end)
 
-option("backward")
-  set_default(false)
-
 target("nanokv")
   add_options("backward")
   add_rules("flatc")
@@ -43,7 +49,7 @@ target("nanokv")
   add_files("src/*.cpp")
   add_files("src/*.fbs")
   add_packages("uwebsockets", "leveldb", "spdlog", "flatbuffers", "ctrl-c", "atomic", "argz")
-  if has_package("backward-cpp") and has_config("backward") then
+  if has_package("backward-cpp")then
     add_packages("backward-cpp")
     add_defines("USE_BACKWARD")
   end
