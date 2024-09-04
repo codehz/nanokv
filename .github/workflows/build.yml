@@ -1,0 +1,24 @@
+name: C++ CI
+
+on:
+  push:
+    branches: ["🍀"]
+  pull_request:
+    branches: ["🍀"]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: xmake-io/github-action-setup-xmake@v1
+        with:
+          xmake-version: latest
+          actions-cache-folder: .xmake-cache
+          actions-cache-key: xmake-${{ matrix.os }}
+      - name: Build
+        run: xmake -y
