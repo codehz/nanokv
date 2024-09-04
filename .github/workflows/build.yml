@@ -16,6 +16,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+      - name: Set xmake env
+        run: echo "XMAKE_GLOBALDIR=${{ runner.tool_cache }}/xmake-global" >> $env:GITHUB_ENV
+        shell: bash
       - uses: xmake-io/github-action-setup-xmake@v1
         with:
           xmake-version: latest
@@ -25,7 +28,7 @@ jobs:
         id: cache-xmake
         uses: actions/cache@v4
         with:
-          path: ${{ github.env.HOME }}/.xmake
-          key: xmake-package-${{ runner.os }}
+          path: ${{ env.XMAKE_GLOBALDIR }}/.xmake/packages
+          key: xmake-packages-${{ runner.os }}
       - name: Build
         run: xmake -vy
