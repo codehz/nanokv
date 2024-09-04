@@ -30,14 +30,16 @@ import type {
 import { WebSocketConnection } from "./ws";
 export * from "./types";
 
-const START = new Uint8Array([0x01]);
+const START = new Uint8Array([0x00]);
 const END = new Uint8Array([0xff]);
 
 type _KvWithKey<
   X extends KvEntry | KvQueueEntry,
   K extends X["key"]
 > = X extends unknown ? (K extends X["key"] ? X : never) : never;
-type _KvPrefix<X extends readonly unknown[]> = X extends [unknown, ...infer Xs]
+type _KvPrefix<X extends readonly unknown[]> = unknown[] extends X
+  ? unknown[]
+  : X extends [unknown, ...infer Xs]
   ? [] | [X[0]] | [X[0], ..._KvPrefix<Xs>]
   : [];
 type _KvFindPrefix<
@@ -270,7 +272,7 @@ export class NanoKV<
     });
   }
 
-  list<K extends _KvPrefix<E["key"]>>(
+  list<const K extends _KvPrefix<E["key"]>>(
     selector: KvListSelector<K>,
     {
       limit = 500,
@@ -278,7 +280,7 @@ export class NanoKV<
       batchSize = 128,
       cursor,
     }: KvListOptions = {}
-  ): ReadableStream<_KvFindPrefix<E, K>[]> {
+  ): ReadableStream<_KvFindPrefix<E, K>> {
     const base =
       "prefix" in selector
         ? {
@@ -290,7 +292,7 @@ export class NanoKV<
     if (batchSize <= 0 || batchSize >= 1024 || !Number.isFinite(batchSize)) {
       batchSize = 1024;
     }
-    return new ReadableStream<_KvFindPrefix<E, K>[]>(
+    return new ReadableStream<_KvFindPrefix<E, K>>(
       {
         pull: async (controller) => {
           const [values] = await this.#snapshot_read([
@@ -306,7 +308,7 @@ export class NanoKV<
               exact: false,
             },
           ]);
-          controller.enqueue(values as any);
+          for (const item of values) controller.enqueue(item as any);
           if (values.length == batchSize && limit > batchSize) {
             cursor = values[values.length - 1].key;
             limit -= batchSize;
