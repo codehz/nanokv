@@ -49,3 +49,9 @@ jobs:
         run: xmake f -y --toolchain=${{ matrix.cfg.toolchain }} --arch=${{ matrix.cfg.arch }} --mode=${{ matrix.mode }}
       - name: Build
         run: xmake -vy
+      - name: Install to temp
+        run: xmake install -o ${{ runner.temp }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nanokv-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}-${{ matrix.mode }}
+          path: ${{ runner.temp }}/bin
