@@ -18,10 +18,7 @@ struct FnIter {
     fn = std::move(iter.fn);
     return *this;
   }
-  inline FnIter &operator=(FnIter const &iter) {
-    fn = iter.fn;
-    return *this;
-  }
+  inline FnIter &operator=(FnIter const &iter) = delete;
   struct proxy {
     Fn fn;
 
