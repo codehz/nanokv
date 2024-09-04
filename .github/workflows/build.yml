@@ -43,6 +43,6 @@ jobs:
           path: ${{ env.XMAKE_GLOBALDIR }}/.xmake/packages
           key: xmake-packages-${{ runner.os }}
       - name: Set toolchain ${{ matrix.cfg.toolchain }}
-        run: xmake f --toolchain=${{ matrix.cfg.toolchain }}
+        run: xmake f -y --toolchain=${{ matrix.cfg.toolchain }}
       - name: Build
         run: xmake -vy
