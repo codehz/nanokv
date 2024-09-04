@@ -202,18 +202,21 @@ Offset<packet::SnapshotReadOutput> Storage::snapshot_read(FlatBufferBuilder     
   auto                                         comparator = leveldb::BytewiseComparator();
 
   read_options.snapshot = snapshot.value;
+  _CHECK_FIELD(read, requests, SnapshotRead);
   for (auto request : *read->requests()) {
     if (request->exact()) {
       _CHECK_FIELD(request, start, ReadRange);
-      status = db->Get(read_options, ToSlice(*request->start()), &buffer);
+      auto key = ToSlice(*request->start());
+      if (key[0] == 0) goto skip_exact;
+      status = db->Get(read_options, key, &buffer);
       if (status.ok()) {
         auto holder = flatbuffers::GetRoot<internal::ValueHolder>(buffer.data());
-        if (holder->expired_at() > 0 && holder->expired_at() < timestamp) goto skip;
+        if (holder->expired_at() > 0 && holder->expired_at() < timestamp) goto skip_exact;
         ranges.push_back(packet::CreateReadRangeOutput(
             builder, builder.CreateVector(
                          {CreateKvEntryFromValueHolder(builder, CloneVector(builder, *request->start()), *holder)})));
       } else {
-      skip:
+      skip_exact:
         ranges.push_back(packet::CreateReadRangeOutput(builder));
       }
     } else {
@@ -221,10 +224,22 @@ Offset<packet::SnapshotReadOutput> Storage::snapshot_read(FlatBufferBuilder     
       std::vector<Offset<packet::KvEntry>> values;
       _CHECK_FIELD(request, start, ReadRange);
       _CHECK_FIELD(request, end, ReadRange);
-      if (request->reverse())
-        for (iterator->Seek(ToSlice(*request->end()));
-             iterator->Valid() && comparator->Compare(iterator->key(), ToSlice(*request->start())) >= 0;
-             iterator->Prev()) {
+      auto start = ToSlice(*request->start());
+      auto end   = ToSlice(*request->end());
+      if (start[0] == 0) start = {"\1", 1};
+      if (comparator->Compare(start, end) > 0) {
+        ranges.push_back(packet::CreateReadRangeOutput(builder));
+        continue;
+      }
+      if (request->reverse()) {
+        iterator->Seek(end);
+        if (!iterator->Valid()) {
+          iterator->SeekToLast();
+          if (!iterator->Valid()) goto skip_range;
+        } else {
+          iterator->Prev();
+        }
+        for (; iterator->Valid() && comparator->Compare(iterator->key(), start) >= 0; iterator->Prev()) {
           auto holder = flatbuffers::GetRoot<internal::ValueHolder>(iterator->value().data());
           if (holder->expired_at() > 0 && holder->expired_at() < timestamp) continue;
           values.push_back(CreateKvEntryFromValueHolder(builder, CloneVector(builder, iterator->key()), *holder));
@@ -232,9 +247,8 @@ Offset<packet::SnapshotReadOutput> Storage::snapshot_read(FlatBufferBuilder     
             break;
           }
         }
-      else
-        for (iterator->Seek(ToSlice(*request->start()));
-             iterator->Valid() && comparator->Compare(iterator->key(), ToSlice(*request->end())) <= 0;
+      } else {
+        for (iterator->Seek(start); iterator->Valid() && comparator->Compare(iterator->key(), end) < 0;
              iterator->Next()) {
           auto holder = flatbuffers::GetRoot<internal::ValueHolder>(iterator->value().data());
           if (holder->expired_at() > 0 && holder->expired_at() < timestamp) continue;
@@ -243,6 +257,8 @@ Offset<packet::SnapshotReadOutput> Storage::snapshot_read(FlatBufferBuilder     
             break;
           }
         }
+      }
+    skip_range:
       ranges.push_back(packet::CreateReadRangeOutput(builder, builder.CreateVector(values)));
     }
   }
@@ -281,10 +297,11 @@ Offset<packet::AtomicWriteOutput> Storage::atomic_write(FlatBufferBuilder &build
   if (write->checks())
     for (auto check : *write->checks()) {
       _CHECK_FIELD(check, key, Check);
-      auto        key     = check->key();
-      auto        version = check->version();
+      auto key     = ToSlice(*check->key());
+      auto version = check->version();
+      if (key[0] == 0) goto check_fail;
       std::string buffer;
-      status = db->Get(snapshot.options, ToSlice(*key), &buffer);
+      status = db->Get(snapshot.options, key, &buffer);
       if (version == 0) {
         if (status.IsNotFound()) continue;
       } else {
@@ -292,7 +309,7 @@ Offset<packet::AtomicWriteOutput> Storage::atomic_write(FlatBufferBuilder &build
           auto actual = flatbuffers::GetRoot<internal::ValueHolder>(buffer.data())->version();
           if (actual == version) continue;
         }
-        return packet::CreateAtomicWriteOutput(builder);
+        goto check_fail;
       }
     }
   if (write->dequeues())
@@ -301,41 +318,44 @@ Offset<packet::AtomicWriteOutput> Storage::atomic_write(FlatBufferBuilder &build
       auto        key = createQueueKey(dequeue->schedule(), dequeue->sequence(), *dequeue->key());
       std::string buffer;
       status = db->Get(snapshot.options, key, &buffer);
-      if (status.IsNotFound()) return packet::CreateAtomicWriteOutput(builder);
+      if (status.IsNotFound()) goto check_fail;
       if (!status.ok()) throw std::runtime_error(status.ToString());
       batch.Delete(key);
     }
   if (write->mutations())
     for (auto mutation : *write->mutations()) {
       _CHECK_FIELD(mutation, key, Mutation);
+      auto key = ToSlice(*mutation->key());
+      if (key[0] == 0) goto check_fail;
       if (mutation->type() == packet::MutationType_DELETE) {
       early_delete:
         std::string buffer;
-        status = db->Get(snapshot.options, ToSlice(*mutation->key()), &buffer);
+        status = db->Get(snapshot.options, key, &buffer);
         if (status.IsNotFound()) {
           continue;
         }
         auto holder = flatbuffers::GetRoot<internal::ValueHolder>(buffer.data());
-        if (holder->expired_at()) batch.Delete(createExpiresKey(holder->expired_at(), *mutation->key()));
-        batch.Delete(ToSlice(*mutation->key()));
-        updates[ToString(*mutation->key())] = std::nullopt;
+        if (holder->expired_at()) batch.Delete(createExpiresKey(holder->expired_at(), key));
+        batch.Delete(key);
+        updates[ToString(key)] = std::nullopt;
       } else if (mutation->type() == packet::MutationType_SET) {
         _CHECK_FIELD(mutation, value, Mutation);
         if (mutation->expired_at() > 0) {
           if (timestamp > mutation->expired_at()) goto early_delete;
-          batch.Put(createExpiresKey(mutation->expired_at(), *mutation->key()), {});
+          batch.Put(createExpiresKey(mutation->expired_at(), key), {});
           key_expires = std::min(key_expires, mutation->expired_at());
         }
         auto buffer = createValueHolder(mutation->value(), mutation->encoding(), versionstamp, mutation->expired_at());
-        batch.Put(ToSlice(*mutation->key()), ToSlice(buffer));
-        updates[ToString(*mutation->key())] = {ToString(*mutation->value()), mutation->encoding(), versionstamp};
+        batch.Put(key, ToSlice(buffer));
+        updates[ToString(key)] = {ToString(*mutation->value()), mutation->encoding(), versionstamp};
       }
     }
   if (write->enqueues())
     for (auto enqueue : *write->enqueues()) {
       _CHECK_FIELD(enqueue, key, Enqueue);
       _CHECK_FIELD(enqueue, value, Enqueue);
-      auto        seqkey = createQueueSequenceKey(*enqueue->key());
+      auto        key    = ToSlice(*enqueue->key());
+      auto        seqkey = createQueueSequenceKey(key);
       std::string seqbuf{};
       status        = db->Get(snapshot.options, seqkey, &seqbuf);
       auto sequence = status.ok() ? readQueueSequence(seqbuf) : 0;
@@ -347,14 +367,14 @@ Offset<packet::AtomicWriteOutput> Storage::atomic_write(FlatBufferBuilder &build
       batch.Put(seqkey, seqbuf);
       uint64_t schedule = enqueue->schedule();
       if (schedule < timestamp) schedule = timestamp;
-      auto key    = createQueueKey(schedule, sequence, *enqueue->key());
-      auto holder = createQueueValueHolder(enqueue->value(), enqueue->encoding());
-      batch.Put(key, ToSlice(holder));
+      auto queuekey = createQueueKey(schedule, sequence, key);
+      auto holder   = createQueueValueHolder(enqueue->value(), enqueue->encoding());
+      batch.Put(queuekey, ToSlice(holder));
       if (schedule == timestamp)
-        enqueues[ToString(*enqueue->key())] = {.value    = enqueue->value() ? ToString(*enqueue->value()) : "",
-                                               .encoding = enqueue->encoding(),
-                                               .schedule = schedule,
-                                               .sequence = sequence};
+        enqueues[ToString(key)] = {.value    = enqueue->value() ? ToString(*enqueue->value()) : "",
+                                   .encoding = enqueue->encoding(),
+                                   .schedule = schedule,
+                                   .sequence = sequence};
       else
         queue_schedule = std::min(queue_schedule, schedule);
     }
@@ -369,6 +389,8 @@ Offset<packet::AtomicWriteOutput> Storage::atomic_write(FlatBufferBuilder &build
     app->reset_queue_timer(queue_schedule);
   }
   return packet::CreateAtomicWriteOutput(builder, true, versionstamp);
+check_fail:
+  return packet::CreateAtomicWriteOutput(builder);
 }
 
 Offset<packet::ListenOutput> Storage::listen_fetch(FlatBufferBuilder &builder, packet::Listen const *listen) {
