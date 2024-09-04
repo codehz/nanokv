@@ -125,7 +125,7 @@ template <typename T>
 inline void initApp(Server *server, T &app) {
   using QueueState = typename T::QueueState;
   app.post("/snapshot_read",
-           [server](auto res, auto req) {
+           [](auto res, auto req) {
              res->onAborted([]() { spdlog::info("aborted"); })
                  ->onData([=, buffer = std::string{}](std::string_view data, bool isLast) mutable {
                    buffer.append(data);

@@ -456,7 +456,6 @@ void Storage::schedule_queues(QueueListenerMap &listeners, uint64_t &next) {
   leveldb::Status                    status;
   SnapshotAutofree                   snapshot{db.get()};
   std::unique_ptr<leveldb::Iterator> db_iterator{db->NewIterator(snapshot.options)};
-  int                                count = 0;
 
   for (auto listener_iterator = listeners.begin(); listener_iterator != listeners.end();) {
     FlatBufferBuilder builder;
