@@ -15,7 +15,7 @@
 
 namespace nanokv {
 
-struct ServerCluster;
+class ServerCluster;
 class Server;
 
 struct PolyApp {
