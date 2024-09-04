@@ -41,7 +41,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.XMAKE_GLOBALDIR }}/.xmake/packages
-          key: xmake-packages-${{ runner.os }}
+          key: xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}
       - name: Set toolchain ${{ matrix.cfg.toolchain }}
         run: xmake f -y --toolchain=${{ matrix.cfg.toolchain }}
       - name: Build
