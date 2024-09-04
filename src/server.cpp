@@ -15,7 +15,6 @@
 
 #include "convert.h"
 #include "fbextra.h"
-#include "iter.h"
 #include "kverror.h"
 #include "schema_generated.h"
 #include "storage.h"
@@ -29,14 +28,27 @@ class WatchState {
   inline void subscribe(std::string_view key) { keys.insert(std::string{key}); }
   inline void unsubscribe(std::string_view key) { keys.erase(keys.find(key)); }
   inline bool has(std::string_view key) { return keys.find(key) != keys.end(); }
-  inline void intersection(UpdateMap const &rhs, std::output_iterator<UpdateMap::value_type> auto &&output) {
+  inline void intersection(UpdateMap const &map, std::invocable<UpdateMap::value_type const &> auto &&fn) {
     constexpr auto take_str = [](auto &&v) {
       if constexpr (requires { v.first; })
         return v.first;
       else
         return v;
     };
-    std::ranges::set_intersection(rhs, keys, output, std::less<>{}, take_str, take_str);
+    auto map_it = map.begin();
+    auto set_it = keys.begin();
+    while (map_it != map.end() && set_it != keys.end()) {
+      if (map_it->first < *set_it) {
+        ++map_it;
+      } else if (*set_it < map_it->first) {
+        ++set_it;
+      } else {
+        fn(*map_it);
+        ++map_it;
+        ++set_it;
+      }
+    }
+    // std::ranges::set_intersection(rhs, keys, output, std::less<>{}, take_str, take_str);
   }
 };
 
@@ -80,16 +92,15 @@ struct TemplatedPolyApp : PolyApp, uWS::TemplatedApp<SSL, TemplatedPolyApp<SSL>>
     FlatBufferBuilder builder;
     for (auto &watch : this->watches) {
       std::vector<Offset<packet::KvEntry>> entries;
-      watch->getUserData()->intersection(
-          *updates, FnIter([target = std::addressof(entries)](UpdateMap::value_type const &pair) {
-            if (pair.second) {
-              target->push_back(packet::CreateKvEntry(builder, CloneVector(builder, pair.first),
-                                                      CloneVector(builder, pair.second->value), pair.second->encoding,
-                                                      pair.second->version));
-            } else {
-              target->push_back(packet::CreateKvEntry(builder, CloneVector(builder, pair.first)));
-            }
-          }));
+      watch->getUserData()->intersection(*updates, [&](UpdateMap::value_type const &pair) {
+        if (pair.second) {
+          entries.push_back(packet::CreateKvEntry(builder, CloneVector(builder, pair.first),
+                                                  CloneVector(builder, pair.second->value), pair.second->encoding,
+                                                  pair.second->version));
+        } else {
+          entries.push_back(packet::CreateKvEntry(builder, CloneVector(builder, pair.first)));
+        }
+      });
       auto dbg = updates->begin()->first;
       if (!entries.empty()) {
         builder.Finish(packet::CreateWatchOutput(builder, 0, builder.CreateVector(entries)));
