@@ -14,9 +14,9 @@ namespace nanokv {
 class Core;
 
 class CoreTimer {
-  craii<us_timer_t, us_timer_close> timer;
-  std::mutex                        mutex;
-  std::atomic<uint64_t>             next = ~0ull;
+  us_timer_t           *timer;
+  std::mutex            mutex;
+  std::atomic<uint64_t> next = ~0ull;
   void (*cb)(us_timer_t *t);
 
  public:
