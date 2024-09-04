@@ -11,7 +11,7 @@ struct FnIter {
   using pointer           = void;
   using reference         = void;
 
-  inline FnIter(Fn const &fn) : fn{fn} {}
+  inline FnIter(Fn &&fn) : fn{std::move(fn)} {}
   inline FnIter(FnIter &&iter) : fn{std::move(iter.fn)} {}
   inline FnIter(FnIter const &iter) : fn{iter.fn} {}
   inline FnIter &operator=(FnIter &&iter) {
@@ -41,6 +41,6 @@ struct FnIter {
 };
 
 template <typename Fn>
-FnIter(Fn const &iter) -> FnIter<Fn>;
+FnIter(Fn &&iter) -> FnIter<Fn>;
 
 }  // namespace nanokv
