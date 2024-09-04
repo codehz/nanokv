@@ -489,7 +489,8 @@ void Storage::schedule_queues(QueueListenerMap &listeners, uint64_t &next) {
 
     if (!entries.empty()) {
       builder.Finish(packet::CreateListenOutput(builder, builder.CreateVector(entries)));
-      listener->getServer()->defer([listener, buffer = builder.Release()] { listener->notify(ToStringView(buffer)); });
+      listener->getServer()->defer(
+          [listener = listener, buffer = builder.Release()] { listener->notify(ToStringView(buffer)); });
       ref <<= snapshot;
     }
     listener_iterator = end;
