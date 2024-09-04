@@ -182,21 +182,6 @@ inline void initApp(Server *server, T &app) {
                                            .maxBackpressure          = 1024 * 1024,
                                            .closeOnBackpressureLimit = true,
                                            .open = [=](auto *ws) { ws->getUserData()->init(server, ws); },
-                                           .close =
-                                               [=](auto *ws, int code, std::string_view message) {
-                                                 std::lock_guard lock{server->cluster->queues_mutex};
-                                                 auto           &queue = server->cluster->active_queues;
-                                                 auto           &state = *ws->getUserData();
-                                                 for (auto &key : state) {
-                                                   auto [it, end] = queue.equal_range(key.first);
-                                                   for (; it != end; it++) {
-                                                     if (it->second == &state) {
-                                                       queue.erase(it);
-                                                       break;
-                                                     }
-                                                   }
-                                                 }
-                                               },
                                            .message =
                                                [=](auto *ws, std::string_view message, uWS::OpCode opCode) {
                                                  if (opCode != uWS::BINARY) {
@@ -252,6 +237,21 @@ inline void initApp(Server *server, T &app) {
                                                      return;
                                                    }
                                                  }
+                                               },
+                                           .close =
+                                               [=](auto *ws, int code, std::string_view message) {
+                                                 std::lock_guard lock{server->cluster->queues_mutex};
+                                                 auto           &queue = server->cluster->active_queues;
+                                                 auto           &state = *ws->getUserData();
+                                                 for (auto &key : state) {
+                                                   auto [it, end] = queue.equal_range(key.first);
+                                                   for (; it != end; it++) {
+                                                     if (it->second == &state) {
+                                                       queue.erase(it);
+                                                       break;
+                                                     }
+                                                   }
+                                                 }
                                                }})
       .template ws<WatchState>(
           "/watch", {.maxPayloadLength         = 1024 * 1024,
@@ -259,7 +259,6 @@ inline void initApp(Server *server, T &app) {
                      .maxBackpressure          = 1024 * 1024,
                      .closeOnBackpressureLimit = true,
                      .open                     = [&app](auto *ws) { app.watches.insert(ws); },
-                     .close = [&app](auto *ws, int code, std::string_view message) { app.watches.erase(ws); },
                      .message =
                          [=](auto *ws, std::string_view message, uWS::OpCode opCode) {
                            if (opCode != uWS::BINARY) {
@@ -293,7 +292,8 @@ inline void initApp(Server *server, T &app) {
                              ws->end(1007, e.what());
                              return;
                            }
-                         }})
+                         },
+                     .close = [&app](auto *ws, int code, std::string_view message) { app.watches.erase(ws); }})
       .listen(2256, [](auto *listen_socket) {
         if (listen_socket) {
           spdlog::info("Listening on port {}", 2256);
