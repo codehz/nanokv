@@ -30,7 +30,7 @@ const END = new Uint8Array([0xff]);
 type _KvWithKey<
   X extends KvEntry | KvQueueEntry,
   K extends X["key"]
-> = X extends unknown ? (K extends X["key"] ? X : never) : never;
+> = X extends unknown ? (K extends Readonly<X["key"]> ? X : never) : never;
 type _KvPrefix<X extends readonly unknown[]> = unknown[] extends X
   ? unknown[]
   : X extends [unknown, ...infer Xs]
@@ -208,7 +208,7 @@ export class NanoKV<
     }
   }
 
-  async get<K extends E["key"]>(
+  async get<K extends Readonly<E["key"]>>(
     key: K
   ): Promise<_KvMaybeEntry<_KvWithKey<E, K>>> {
     const [[entry]] = await this.#snapshot_read([{ start: key, exact: true }]);
@@ -225,7 +225,7 @@ export class NanoKV<
     } as _KvEntryNotFound<_KvWithKey<E, K>>;
   }
 
-  async getMany<const Ks extends readonly E["key"][]>(
+  async getMany<const Ks extends Readonly<E["key"]>[]>(
     ...keys: Ks
   ): Promise<{ [N in keyof Ks]: _KvMaybeEntry<_KvWithKey<E, Ks[N]>> }> {
     const result = await this.#snapshot_read(
@@ -246,7 +246,7 @@ export class NanoKV<
     }) as any;
   }
 
-  async set<K extends E["key"]>(
+  async set<K extends Readonly<E["key"]>>(
     key: K,
     value: _KvWithKey<E, K>["value"],
     { expireIn }: { expireIn?: number } = {}
@@ -263,7 +263,7 @@ export class NanoKV<
     });
   }
 
-  async delete<K extends E["key"]>(
+  async delete<K extends Readonly<E["key"]>>(
     key: K
   ): Promise<{ ok: boolean; version: bigint }> {
     return await this.#atomic_write({
@@ -331,7 +331,7 @@ export class NanoKV<
     }
   }
 
-  watch<const Ks extends readonly E["key"][]>(
+  watch<const Ks extends Readonly<E["key"]>[]>(
     ...keys: Ks
   ): ReadableStream<{ [N in keyof Ks]: _KvMaybeEntry<_KvWithKey<E, Ks[N]>> }> {
     const reactor = new Reactor<void>();
@@ -345,7 +345,7 @@ export class NanoKV<
         start: () => {
           const packeds: Uint8Array[] = [];
           for (const key of keys) {
-            const packed = packKey(key);
+            const packed = packKey(key as KvKey);
             packeds.push(packed);
             const stringified = Buffer.from(packed).toString("base64");
             cached.set(stringified, packed);
@@ -355,7 +355,7 @@ export class NanoKV<
             } else {
               this.#subscriptions.set(
                 stringified,
-                new WatchState(key, packed, reactor)
+                new WatchState(key as KvKey, packed, reactor)
               );
             }
           }
@@ -396,7 +396,7 @@ export class NanoKV<
     );
   }
 
-  listen<const Ks extends readonly Q["key"][]>(
+  listen<const Ks extends Readonly<Q["key"]>[]>(
     ...keys: Ks
   ): ReadableStream<
     { [N in keyof Ks]: _KvWithKey<Q, Ks[N]> }[keyof Ks & number]
@@ -410,7 +410,7 @@ export class NanoKV<
       {
         start: () => {
           for (const key of keys) {
-            const packed = packKey(key);
+            const packed = packKey(key as KvKey);
             packeds.push(packed);
             const stringified = Buffer.from(packed).toString("base64");
             cached.set(stringified, packed);
@@ -486,10 +486,10 @@ export class AtomicOperation<
     return this;
   }
 
-  set<K extends E["key"]>(
+  set<K extends Readonly<E["key"]>>(
     key: K,
     value: _KvWithKey<E, K>["value"],
-    { expireIn }: { expireIn?: number; withVersionstampSuffix?: boolean } = {}
+    { expireIn }: { expireIn?: number } = {}
   ): this {
     this.#mutations.push({
       key,
@@ -500,12 +500,12 @@ export class AtomicOperation<
     return this;
   }
 
-  delete<K extends E["key"]>(key: K): this {
+  delete<K extends Readonly<E["key"]>>(key: K): this {
     this.#mutations.push({ key, type: MutationType.DELETE });
     return this;
   }
 
-  enqueue<K extends Q["key"]>(
+  enqueue<K extends Readonly<Q["key"]>>(
     key: K,
     value: _KvWithKey<Q, K>["value"],
     {
@@ -521,7 +521,9 @@ export class AtomicOperation<
     return this;
   }
 
-  dequeue(...keys: { key: Q["key"]; schedule: number; sequence: bigint }[]) {
+  dequeue(
+    ...keys: { key: Readonly<Q["key"]>; schedule: number; sequence: bigint }[]
+  ) {
     this.#dequeues.push(...keys);
     return this;
   }

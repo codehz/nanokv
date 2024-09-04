@@ -1,6 +1,5 @@
 import * as flatbuffers from "flatbuffers";
 import { packKey, unpackKey } from "./kv_key";
-import { ValueEncoding } from "./shared/value-encoding";
 import {
   AtomicWrite,
   AtomicWriteOutput,
@@ -19,32 +18,32 @@ import {
   WatchOutput,
   type MutationType,
 } from "./packet";
+import { ValueEncoding } from "./shared/value-encoding";
 import type { KvKey } from "./types";
-import * as flexbuffers from "flatbuffers/mjs/flexbuffers";
 
 export type RawReadRange = {
-  start: KvKey | Uint8Array;
-  end?: KvKey | Uint8Array;
+  start: any;
+  end?: any;
   limit?: number;
   exact?: boolean;
   reverse?: boolean;
 };
 
 export type RawKvEntry = {
-  key: KvKey;
+  key: any;
   value: any;
   version: bigint | undefined;
 };
 
-export type RawCheck = { key: KvKey; version?: bigint };
+export type RawCheck = { key: any; version?: bigint };
 export type RawMutation = {
   type: MutationType;
-  key: KvKey;
+  key: any;
   value?: any;
   expired_at?: number;
 };
-export type RawEnqueue = { key: KvKey; value: any; schedule?: number };
-export type RawDequeue = { key: KvKey; schedule: number; sequence: bigint };
+export type RawEnqueue = { key: any; value: any; schedule?: number };
+export type RawDequeue = { key: any; schedule: number; sequence: bigint };
 
 export interface ProtocolEncoding {
   serialize(value: any): Uint8Array;
