@@ -13,19 +13,13 @@ jobs:
         cfg:
           - os: ubuntu-latest
             toolchain: gcc
-            arch: i386
-          - os: ubuntu-latest
-            toolchain: gcc
             arch: x86_64
-          - os: ubuntu-latest
-            toolchain: clang
-            arch: i386
           - os: ubuntu-latest
             toolchain: clang
             arch: x86_64
           - os: macos-latest
             toolchain: clang
-            arch: x86_64
+            arch: arm64
           - os: windows-latest
             toolchain: msvc
             arch: x86

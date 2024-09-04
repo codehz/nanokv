@@ -81,8 +81,6 @@ class OwnedSlice {
     size_t   len;
 
     inline constexpr ByteProxy operator[](size_t pos) { return {ptr, pos}; }
-    inline constexpr uint8_t  *operator+(ptrdiff_t off) { return ptr + off; }
-    inline constexpr           operator uint8_t *() { return ptr; }
   };
   inline constexpr OwnedSlice(size_t len, std::invocable<ArrayProxy> auto fn) : ptr(new uint8_t[len]), len(len) {
     std::invoke(fn, ArrayProxy{ptr, len});
