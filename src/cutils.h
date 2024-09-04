@@ -45,7 +45,7 @@ struct converter_input<void *(*)(T)> {
 };
 
 template <typename Sig>
-using converter_input_t = converter_input<Sig>::type;
+using converter_input_t = typename converter_input<Sig>::type;
 
 template <typename Context, typename Input, converter<Input *> auto converter>
 class cdelegate_impl {
