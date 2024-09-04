@@ -113,7 +113,7 @@ static leveldb::DB *open(char const *path) {
   return temp;
 }
 
-Storage::Storage(Core *app, char const *path) : app(app), db{open(path)} { Storage::instance = this; }
+Storage::Storage(Core *app, char const *path) : db{open(path)}, app(app) { Storage::instance = this; }
 
 struct SnapshotAutofree {
   leveldb::DB             *db;

@@ -41,10 +41,10 @@ void CoreTimer::close() { us_timer_close(timer); }
 Core::Core()
     : loop(us_create_loop(
           nullptr, CoreDelegate::method<&Core::wakeup_callback>, [](auto) {}, [](auto) {}, sizeof(Core *))),
-      key_expires_timer(this, TimerDelegate::method<&Core::cleanup_expired_keys>),
-      queue_timer(this, TimerDelegate::method<&Core::check_queues>),
       storage(this, "db"),
-      cluster(std::max(1u, std::thread::hardware_concurrency() - 1)) {
+      cluster(std::max(1u, std::thread::hardware_concurrency() - 1)),
+      key_expires_timer(this, TimerDelegate::method<&Core::cleanup_expired_keys>),
+      queue_timer(this, TimerDelegate::method<&Core::check_queues>) {
   cext(us_loop_ext(loop)) = this;
 }
 

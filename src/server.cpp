@@ -29,12 +29,6 @@ class WatchState {
   inline void unsubscribe(std::string_view key) { keys.erase(keys.find(key)); }
   inline bool has(std::string_view key) { return keys.find(key) != keys.end(); }
   inline void intersection(UpdateMap const &map, std::invocable<UpdateMap::value_type const &> auto &&fn) {
-    constexpr auto take_str = [](auto &&v) {
-      if constexpr (requires { v.first; })
-        return v.first;
-      else
-        return v;
-    };
     auto map_it = map.begin();
     auto set_it = keys.begin();
     while (map_it != map.end() && set_it != keys.end()) {
@@ -48,7 +42,6 @@ class WatchState {
         ++set_it;
       }
     }
-    // std::ranges::set_intersection(rhs, keys, output, std::less<>{}, take_str, take_str);
   }
 };
 
@@ -323,7 +316,7 @@ void Server::close() {
 
 ServerCluster::ServerCluster(size_t num_servers) {
   servers.reserve(num_servers);
-  for (int i = 0; i < num_servers; i++) {
+  for (size_t i = 0; i < num_servers; i++) {
     servers.emplace_back(this);
   }
 }
