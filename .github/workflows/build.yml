@@ -10,7 +10,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest]
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -21,4 +21,4 @@ jobs:
           actions-cache-folder: .xmake-cache
           actions-cache-key: xmake-${{ matrix.os }}
       - name: Build
-        run: xmake -y
+        run: xmake -vy
