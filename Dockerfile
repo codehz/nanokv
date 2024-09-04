@@ -1,6 +1,6 @@
 FROM alpine:latest AS builder
 
-ENV XMAKE_ROOT y
+ENV XMAKE_ROOT=y
 RUN apk add --no-cache curl p7zip unzip git gcc g++ make cmake xmake perl linux-headers
 ADD . /root/nanokv
 WORKDIR /root/nanokv
