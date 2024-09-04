@@ -1,5 +1,6 @@
 add_requires("uwebsockets", "leveldb", "spdlog", "flatbuffers", "ctrl-c")
 add_requires("backward-cpp", {configs = {stack_details = "backtrace_symbol"}, optional = true})
+add_requires("atomic", {system = true, optional = true})
 
 add_rules("mode.release", "mode.debug")
 set_languages("c++23")
@@ -35,7 +36,7 @@ target("nanokv")
   set_kind("binary")
   add_files("src/*.cpp")
   add_files("src/*.fbs")
-  add_packages("uwebsockets", "leveldb", "spdlog", "flatbuffers", "ctrl-c")
+  add_packages("uwebsockets", "leveldb", "spdlog", "flatbuffers", "ctrl-c", "atomic")
   if has_package("backward-cpp") and has_config("backward") then
     add_packages("backward-cpp")
     add_defines("USE_BACKWARD")
