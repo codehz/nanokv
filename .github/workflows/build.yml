@@ -25,7 +25,7 @@ jobs:
         id: cache-xmake
         uses: actions/cache@v4
         with:
-          path: ~/.xmake
+          path: ${{ github.env.HOME }}/.xmake
           key: xmake-package-${{ runner.os }}
       - name: Build
         run: xmake -vy
