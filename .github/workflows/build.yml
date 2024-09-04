@@ -10,9 +10,22 @@ jobs:
   build:
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        cfg:
+          - os: ubuntu-latest
+            toolchain: gcc
+          - os: ubuntu-latest
+            toolchain: clang
+          - os: macos-latest
+            toolchain: clang
+          - os: windows-latest
+            toolchain: clang
+          - os: windows-latest
+            toolchain: mingw
+          - os: windows-latest
+            toolchain: msvc
+        # os: [ubuntu-latest, macos-latest, windows-latest]
       fail-fast: false
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.cfg.os }}
 
     steps:
       - uses: actions/checkout@v4
@@ -23,12 +36,11 @@ jobs:
         with:
           xmake-version: latest
           actions-cache-folder: .xmake-cache
-          actions-cache-key: xmake-${{ matrix.os }}
       - name: Cache XMake packages
         id: cache-xmake
         uses: actions/cache@v4
         with:
           path: ${{ env.XMAKE_GLOBALDIR }}/.xmake/packages
-          key: xmake-packages-${{ runner.os }}
+          key: xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}
       - name: Build
         run: xmake -vy
