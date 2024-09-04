@@ -1,4 +1,4 @@
-add_requireconfs("uwebsockets.usockets", {configs = {ssl = "openssl3"}})
+add_requireconfs("uwebsockets.usockets", {configs = {ssl = "openssl"}})
 add_requireconfs("uwebsockets", {configs = {zip = true, deflate = true}})
 add_requires("uwebsockets", "leveldb", "spdlog", "flatbuffers", "ctrl-c", "argz")
 add_requires("backward-cpp", {configs = {stack_details = "backtrace_symbol"}, optional = true})
