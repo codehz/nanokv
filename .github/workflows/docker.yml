@@ -1,4 +1,6 @@
 name: Docker CI
+concurrency:
+  group: ${{ github.workflow }}
 
 on:
   push:
