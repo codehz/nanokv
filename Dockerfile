@@ -2,9 +2,10 @@ FROM alpine:latest AS builder
 
 ENV XMAKE_ROOT=y
 RUN apk add --no-cache curl p7zip unzip git gcc g++ make cmake xmake perl linux-headers
-ADD . /root/nanokv
+ADD ./xmake.lua /root/nanokv/xmake.lua
 WORKDIR /root/nanokv
 RUN xmake f -y --mode=release
+ADD . /root/nanokv
 RUN xmake -v
 RUN xmake install
 
