@@ -360,10 +360,8 @@ Offset<packet::AtomicWriteOutput> Storage::atomic_write(FlatBufferBuilder &build
       status        = db->Get(snapshot.options, seqkey, &seqbuf);
       auto sequence = status.ok() ? readQueueSequence(seqbuf) : 0;
       ++sequence;
-      seqbuf.resize_and_overwrite(sizeof sequence, [&](auto data, auto size) {
-        encodeQueueSequence(sequence, data);
-        return size;
-      });
+      seqbuf.resize(sizeof sequence);
+      encodeQueueSequence(sequence, seqbuf.data());
       batch.Put(seqkey, seqbuf);
       uint64_t schedule = enqueue->schedule();
       if (schedule < timestamp) schedule = timestamp;
