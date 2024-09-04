@@ -39,6 +39,10 @@ jobs:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }} 
+      - uses: int128/docker-build-cache-config-action@v1
+        id: cache
+        with:
+          image: ghcr.io/${{ github.repository }}/cache
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
@@ -46,7 +50,8 @@ jobs:
           images: |
             ${{ env.REGISTRY_IMAGE }}
           tags: |
-            type=ref,event=branch
+            type=ref,event=branch,enable=${{ !endsWith(github.ref, github.event.repository.default_branch) }}
+            type=raw,value=latest,enable=${{ endsWith(github.ref, github.event.repository.default_branch) }}
             type=ref,event=pr
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -57,8 +62,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: ${{ steps.cache.outputs.cache-from }}
+          cache-to: ${{ steps.cache.outputs.cache-to }}
 
       - name: Export digest
         run: |
@@ -93,6 +98,12 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=ref,event=branch,enable=${{ !endsWith(github.ref, github.event.repository.default_branch) }}
+            type=raw,value=latest,enable=${{ endsWith(github.ref, github.event.repository.default_branch) }}
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
