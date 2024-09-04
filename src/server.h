@@ -21,7 +21,7 @@ class Server;
 struct PolyApp {
   inline virtual ~PolyApp()                                                = default;
   virtual void dispatch_updates(std::shared_ptr<UpdateMap> const &updates) = 0;
-  virtual void close()                                                     = 0;
+  virtual void shutdown()                                                  = 0;
 };
 
 template <typename T>

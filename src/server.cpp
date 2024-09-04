@@ -96,7 +96,7 @@ struct TemplatedPolyApp : PolyApp, uWS::TemplatedApp<SSL, TemplatedPolyApp<SSL>>
       }
     }
   }
-  inline void close() { this->TemplatedApp::close(); }
+  inline void shutdown() { this->close(); }
 };
 
 using TCPApp = TemplatedPolyApp<false>;
@@ -305,7 +305,7 @@ inline void initApp(Server *server, T &app) {
 
 void Server::close() {
   loop->defer([this] {
-    if (app) app->close();
+    if (app) app->shutdown();
   });
 }
 
