@@ -226,7 +226,7 @@ export class NanoKV<
   }
 
   async getMany<const Ks extends Readonly<E["key"]>[]>(
-    ...keys: Ks
+    keys: Ks
   ): Promise<{ [N in keyof Ks]: _KvMaybeEntry<_KvWithKey<E, Ks[N]>> }> {
     const result = await this.#snapshot_read(
       keys.map((key) => ({ start: key, exact: true } as const))
@@ -332,7 +332,7 @@ export class NanoKV<
   }
 
   watch<const Ks extends Readonly<E["key"]>[]>(
-    ...keys: Ks
+    keys: Ks
   ): ReadableStream<{ [N in keyof Ks]: _KvMaybeEntry<_KvWithKey<E, Ks[N]>> }> {
     const reactor = new Reactor<void>();
     const cached = new Map<string, Uint8Array>();

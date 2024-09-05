@@ -6,7 +6,7 @@ const kv = new NanoKV<
 >("http://127.0.0.1:2256");
 
 async function watch(signal: AbortSignal) {
-  const watcher = kv.watch(["test", 1], ["test", 2]);
+  const watcher = kv.watch([["test", 1], ["test", 2]]);
   const reader = watcher.getReader();
   signal.addEventListener("abort", () => {
     reader.cancel();
@@ -39,7 +39,12 @@ async function listen(signal: AbortSignal) {
 }
 
 async function read() {
-  console.log(await kv.getMany(["test", 1], ["test", 2]));
+  console.log(
+    await kv.getMany([
+      ["test", 1],
+      ["test", 2],
+    ])
+  );
 }
 
 const controller = new AbortController();
