@@ -37,7 +37,8 @@ class CoreTimer {
  public:
   CoreTimer(Core *, void (*cb)(us_timer_t *t));
 
-  void schedule(uint64_t target);
+  bool schedule(uint64_t target);
+  void invoke();
   bool need_schedule(uint64_t target);
   void close();
 };

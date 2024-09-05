@@ -32,18 +32,28 @@ CoreTimer::CoreTimer(Core *core, void (*cb)(us_timer_t *t))
   cext(us_timer_ext(timer)) = core;
 }
 
-void CoreTimer::schedule(uint64_t target) {
-  auto timestamp = now();
-  if (target >= next && next > timestamp) return;
+bool CoreTimer::schedule(uint64_t target) {
+  auto timestamp     = now();
+  auto next_snapshot = next.load(std::memory_order_relaxed);
+  if (target >= next_snapshot && next_snapshot > timestamp) {
+    if (next_snapshot - timestamp <= max_sleep) return false;
+    us_timer_set(timer, cb, max_sleep, 0);
+    next = timestamp + max_sleep;
+    return false;
+  }
   if (target < timestamp) {
-    us_timer_set(timer, cb, 0, max_sleep);
-    next = ~0ull;
+    return true;
   }
   auto wait = std::min(max_sleep, target - timestamp);
-  if (timestamp + wait == next) return;
-  us_timer_set(timer, cb, wait, max_sleep);
+  if (timestamp + wait == next_snapshot) {
+    return false;
+  }
+  us_timer_set(timer, cb, wait, 0);
   next = timestamp + wait;
+  return false;
 }
+
+void CoreTimer::invoke() { cb(timer); }
 
 bool CoreTimer::need_schedule(uint64_t target) {
   auto snapshot = next.load();
@@ -83,25 +93,31 @@ void Core::wakeup_callback(us_loop_t *loop) {
 }
 
 void Core::cleanup_expired_keys(us_timer_t *timer) {
-  auto     map  = std::make_shared<nanokv::UpdateMap>();
-  uint64_t next = ~0ull;
-  storage.cleanup_expired(*map, next);
-  key_expires_timer.schedule(next);
-  if (!map->empty()) {
-    spdlog::info("Drop {} expired entries", map->size());
-    cluster.dispatch_updates(std::move(map));
-  }
+  bool rerun;
+  do {
+    auto     map  = std::make_shared<nanokv::UpdateMap>();
+    uint64_t next = ~0ull;
+    storage.cleanup_expired(*map, next);
+    rerun = key_expires_timer.schedule(next);
+    if (!map->empty()) {
+      spdlog::info("Drop {} expired entries", map->size());
+      cluster.dispatch_updates(std::move(map));
+    }
+  } while (rerun);
 }
 
 void Core::check_queues(us_timer_t *timer) {
-  uint64_t next = ~0ull;
-  storage.schedule_queues(cluster.active_queues, next);
-  queue_timer.schedule(next);
+  bool rerun;
+  do {
+    uint64_t next = ~0ull;
+    storage.schedule_queues(cluster.active_queues, next);
+    rerun = queue_timer.schedule(next);
+  } while (rerun);
 }
 
 void Core::run() {
-  key_expires_timer.schedule(0);
-  queue_timer.schedule(0);
+  key_expires_timer.invoke();
+  queue_timer.invoke();
   us_loop_run(loop);
   cluster.join();
 }
@@ -114,12 +130,16 @@ void Core::stop() {
 
 void Core::reset_key_expires_timer(uint64_t next) {
   if (!key_expires_timer.need_schedule(next)) return;
-  defer([=, this] { key_expires_timer.schedule(next); });
+  defer([=, this] {
+    if (key_expires_timer.schedule(next)) key_expires_timer.invoke();
+  });
 }
 
 void Core::reset_queue_timer(uint64_t next) {
   if (!queue_timer.need_schedule(next)) return;
-  defer([=, this] { queue_timer.schedule(next); });
+  defer([=, this] {
+    if (queue_timer.schedule(next)) queue_timer.invoke();
+  });
 }
 
 }  // namespace nanokv
