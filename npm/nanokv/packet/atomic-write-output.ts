@@ -27,7 +27,7 @@ ok():boolean {
   return offset ? !!this.bb!.readInt8(this.bb_pos + offset) : false;
 }
 
-version():bigint {
+versionstamp():bigint {
   const offset = this.bb!.__offset(this.bb_pos, 6);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
@@ -40,8 +40,8 @@ static addOk(builder:flatbuffers.Builder, ok:boolean) {
   builder.addFieldInt8(0, +ok, +false);
 }
 
-static addVersion(builder:flatbuffers.Builder, version:bigint) {
-  builder.addFieldInt64(1, version, BigInt('0'));
+static addVersionstamp(builder:flatbuffers.Builder, versionstamp:bigint) {
+  builder.addFieldInt64(1, versionstamp, BigInt('0'));
 }
 
 static endAtomicWriteOutput(builder:flatbuffers.Builder):flatbuffers.Offset {
@@ -49,10 +49,10 @@ static endAtomicWriteOutput(builder:flatbuffers.Builder):flatbuffers.Offset {
   return offset;
 }
 
-static createAtomicWriteOutput(builder:flatbuffers.Builder, ok:boolean, version:bigint):flatbuffers.Offset {
+static createAtomicWriteOutput(builder:flatbuffers.Builder, ok:boolean, versionstamp:bigint):flatbuffers.Offset {
   AtomicWriteOutput.startAtomicWriteOutput(builder);
   AtomicWriteOutput.addOk(builder, ok);
-  AtomicWriteOutput.addVersion(builder, version);
+  AtomicWriteOutput.addVersionstamp(builder, versionstamp);
   return AtomicWriteOutput.endAtomicWriteOutput(builder);
 }
 }

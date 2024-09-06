@@ -20,7 +20,7 @@ table KvEntry {
   key: [ubyte];
   value: [ubyte];
   encoding: shared.ValueEncoding;
-  version: ulong;
+  versionstamp: ulong;
 }
 
 table ReadRangeOutput {
@@ -33,7 +33,7 @@ table SnapshotReadOutput {
 
 table Check {
   key: [ubyte];
-  version: ulong;
+  versionstamp: ulong;
 }
 
 enum MutationType: ubyte {
@@ -72,7 +72,7 @@ table AtomicWrite {
 
 table AtomicWriteOutput {
   ok: bool;
-  version: ulong;
+  versionstamp: ulong;
 }
 
 table WatchKey {

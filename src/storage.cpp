@@ -142,11 +142,11 @@ inline static Offset<packet::KvEntry> CreateKvEntryFromValueHolder(FlatBufferBui
     entry.add_value(*value_offset);
   }
   entry.add_encoding(holder.encoding());
-  entry.add_version(holder.version());
+  entry.add_versionstamp(holder.versionstamp());
   return entry.Finish();
 }
 inline static uint64_t       castVersionstamp(std::string_view str) { return *std::bit_cast<uint64_t *>(str.data()); }
-inline static leveldb::Slice encodeVersionstamp(uint64_t &version) { return {(char const *)&version, 8}; }
+inline static leveldb::Slice encodeVersionstamp(uint64_t &versionstamp) { return {(char const *)&versionstamp, 8}; }
 
 uint64_t Storage::current_versionstamp(leveldb::ReadOptions &options) {
   std::string versionstamp(8, (char)0);
@@ -266,11 +266,11 @@ Offset<packet::SnapshotReadOutput> Storage::snapshot_read(FlatBufferBuilder     
 }
 
 inline static flatbuffers::DetachedBuffer createValueHolder(Vector<uint8_t, flatbuffers::uoffset_t> const *input,
-                                                            shared::ValueEncoding encoding, uint64_t version,
+                                                            shared::ValueEncoding encoding, uint64_t versionstamp,
                                                             uint64_t expired_at) {
   FlatBufferBuilder builder;
   builder.Finish(internal::CreateValueHolder(builder, input && input->size() > 0 ? CloneVector(builder, *input) : 0,
-                                             encoding, version, expired_at));
+                                             encoding, versionstamp, expired_at));
   return builder.Release();
 }
 
@@ -297,17 +297,17 @@ Offset<packet::AtomicWriteOutput> Storage::atomic_write(FlatBufferBuilder &build
   if (write->checks())
     for (auto check : *write->checks()) {
       _CHECK_FIELD(check, key, Check);
-      auto key     = ToSlice(*check->key());
-      auto version = check->version();
+      auto key          = ToSlice(*check->key());
+      auto versionstamp = check->versionstamp();
       if (key[0] == 0) goto check_fail;
       std::string buffer;
       status = db->Get(snapshot.options, key, &buffer);
-      if (version == 0) {
+      if (versionstamp == 0) {
         if (status.IsNotFound()) continue;
       } else {
         if (status.ok()) {
-          auto actual = flatbuffers::GetRoot<internal::ValueHolder>(buffer.data())->version();
-          if (actual == version) continue;
+          auto actual = flatbuffers::GetRoot<internal::ValueHolder>(buffer.data())->versionstamp();
+          if (actual == versionstamp) continue;
         }
         goto check_fail;
       }

@@ -21,7 +21,7 @@ async function watch(signal: AbortSignal) {
 }
 
 async function listen(signal: AbortSignal) {
-  const reader = kv.listen(["test-queue"]).getReader();
+  const reader = kv.listenQueue(["test-queue"]).getReader();
   signal.addEventListener("abort", () => {
     reader.cancel();
   });

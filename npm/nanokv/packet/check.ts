@@ -37,7 +37,7 @@ keyArray():Uint8Array|null {
   return offset ? new Uint8Array(this.bb!.bytes().buffer, this.bb!.bytes().byteOffset + this.bb!.__vector(this.bb_pos + offset), this.bb!.__vector_len(this.bb_pos + offset)) : null;
 }
 
-version():bigint {
+versionstamp():bigint {
   const offset = this.bb!.__offset(this.bb_pos, 6);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
@@ -62,8 +62,8 @@ static startKeyVector(builder:flatbuffers.Builder, numElems:number) {
   builder.startVector(1, numElems, 1);
 }
 
-static addVersion(builder:flatbuffers.Builder, version:bigint) {
-  builder.addFieldInt64(1, version, BigInt('0'));
+static addVersionstamp(builder:flatbuffers.Builder, versionstamp:bigint) {
+  builder.addFieldInt64(1, versionstamp, BigInt('0'));
 }
 
 static endCheck(builder:flatbuffers.Builder):flatbuffers.Offset {
@@ -71,10 +71,10 @@ static endCheck(builder:flatbuffers.Builder):flatbuffers.Offset {
   return offset;
 }
 
-static createCheck(builder:flatbuffers.Builder, keyOffset:flatbuffers.Offset, version:bigint):flatbuffers.Offset {
+static createCheck(builder:flatbuffers.Builder, keyOffset:flatbuffers.Offset, versionstamp:bigint):flatbuffers.Offset {
   Check.startCheck(builder);
   Check.addKey(builder, keyOffset);
-  Check.addVersion(builder, version);
+  Check.addVersionstamp(builder, versionstamp);
   return Check.endCheck(builder);
 }
 }

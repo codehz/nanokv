@@ -5,7 +5,7 @@ namespace nanokv.internal;
 table ValueHolder {
   value: [ubyte];
   encoding: shared.ValueEncoding;
-  version: ulong;
+  versionstamp: ulong;
   expired_at: ulong;
 }
 

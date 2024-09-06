@@ -90,7 +90,7 @@ struct TemplatedPolyApp : PolyApp, uWS::TemplatedApp<SSL, TemplatedPolyApp<SSL>>
         if (pair.second) {
           entries.push_back(packet::CreateKvEntry(builder, CloneVector(builder, pair.first),
                                                   CloneVector(builder, pair.second->value), pair.second->encoding,
-                                                  pair.second->version));
+                                                  pair.second->versionstamp));
         } else {
           entries.push_back(packet::CreateKvEntry(builder, CloneVector(builder, pair.first)));
         }

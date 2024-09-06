@@ -45,7 +45,7 @@ encoding():ValueEncoding {
   return offset ? this.bb!.readUint8(this.bb_pos + offset) : ValueEncoding.BYTES;
 }
 
-version():bigint {
+versionstamp():bigint {
   const offset = this.bb!.__offset(this.bb_pos, 8);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
@@ -79,8 +79,8 @@ static addEncoding(builder:flatbuffers.Builder, encoding:ValueEncoding) {
   builder.addFieldInt8(1, encoding, ValueEncoding.BYTES);
 }
 
-static addVersion(builder:flatbuffers.Builder, version:bigint) {
-  builder.addFieldInt64(2, version, BigInt('0'));
+static addVersionstamp(builder:flatbuffers.Builder, versionstamp:bigint) {
+  builder.addFieldInt64(2, versionstamp, BigInt('0'));
 }
 
 static addExpiredAt(builder:flatbuffers.Builder, expiredAt:bigint) {
@@ -92,11 +92,11 @@ static endValueHolder(builder:flatbuffers.Builder):flatbuffers.Offset {
   return offset;
 }
 
-static createValueHolder(builder:flatbuffers.Builder, valueOffset:flatbuffers.Offset, encoding:ValueEncoding, version:bigint, expiredAt:bigint):flatbuffers.Offset {
+static createValueHolder(builder:flatbuffers.Builder, valueOffset:flatbuffers.Offset, encoding:ValueEncoding, versionstamp:bigint, expiredAt:bigint):flatbuffers.Offset {
   ValueHolder.startValueHolder(builder);
   ValueHolder.addValue(builder, valueOffset);
   ValueHolder.addEncoding(builder, encoding);
-  ValueHolder.addVersion(builder, version);
+  ValueHolder.addVersionstamp(builder, versionstamp);
   ValueHolder.addExpiredAt(builder, expiredAt);
   return ValueHolder.endValueHolder(builder);
 }

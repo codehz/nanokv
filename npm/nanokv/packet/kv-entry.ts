@@ -60,7 +60,7 @@ encoding():ValueEncoding {
   return offset ? this.bb!.readUint8(this.bb_pos + offset) : ValueEncoding.BYTES;
 }
 
-version():bigint {
+versionstamp():bigint {
   const offset = this.bb!.__offset(this.bb_pos, 10);
   return offset ? this.bb!.readUint64(this.bb_pos + offset) : BigInt('0');
 }
@@ -105,8 +105,8 @@ static addEncoding(builder:flatbuffers.Builder, encoding:ValueEncoding) {
   builder.addFieldInt8(2, encoding, ValueEncoding.BYTES);
 }
 
-static addVersion(builder:flatbuffers.Builder, version:bigint) {
-  builder.addFieldInt64(3, version, BigInt('0'));
+static addVersionstamp(builder:flatbuffers.Builder, versionstamp:bigint) {
+  builder.addFieldInt64(3, versionstamp, BigInt('0'));
 }
 
 static endKvEntry(builder:flatbuffers.Builder):flatbuffers.Offset {
@@ -114,12 +114,12 @@ static endKvEntry(builder:flatbuffers.Builder):flatbuffers.Offset {
   return offset;
 }
 
-static createKvEntry(builder:flatbuffers.Builder, keyOffset:flatbuffers.Offset, valueOffset:flatbuffers.Offset, encoding:ValueEncoding, version:bigint):flatbuffers.Offset {
+static createKvEntry(builder:flatbuffers.Builder, keyOffset:flatbuffers.Offset, valueOffset:flatbuffers.Offset, encoding:ValueEncoding, versionstamp:bigint):flatbuffers.Offset {
   KvEntry.startKvEntry(builder);
   KvEntry.addKey(builder, keyOffset);
   KvEntry.addValue(builder, valueOffset);
   KvEntry.addEncoding(builder, encoding);
-  KvEntry.addVersion(builder, version);
+  KvEntry.addVersionstamp(builder, versionstamp);
   return KvEntry.endKvEntry(builder);
 }
 }

@@ -19,7 +19,7 @@ import {
   type MutationType,
 } from "./packet";
 import { ValueEncoding } from "./shared/value-encoding";
-import type { KvKey } from "./types";
+import type { KvCommitError, KvCommitResult, KvKey } from "./types";
 
 export type RawReadRange = {
   start: any;
@@ -32,10 +32,10 @@ export type RawReadRange = {
 export type RawKvEntry = {
   key: any;
   value: any;
-  version: bigint | undefined;
+  versionstamp: bigint | null;
 };
 
-export type RawCheck = { key: any; version?: bigint };
+export type RawCheck = { key: any; versionstamp: bigint | null };
 export type RawMutation = {
   type: MutationType;
   key: any;
@@ -45,8 +45,13 @@ export type RawMutation = {
 export type RawEnqueue = { key: any; value: any; schedule?: number };
 export type RawDequeue = { key: any; schedule: number; sequence: bigint };
 
+/**
+ * A interface for defining custom serialize and deserialize method.
+ *
+ * Note: you should always use same encoding method across difference client of a NanoKV instance, or bad thing can happen.
+ */
 export interface ProtocolEncoding {
-  serialize(value: any): Uint8Array;
+  serialize(value: unknown): Uint8Array;
   deserialize(data: Uint8Array): any;
 }
 
@@ -122,11 +127,11 @@ export class Protocol {
         const valueArray = item.valueArray();
         const value = valueArray
           ? this.#decodeKvValue(valueArray, item.encoding())
-          : undefined;
+          : null;
         return {
           key,
           value,
-          version: item.version() == 0n ? undefined : item.version(),
+          versionstamp: item.versionstamp() == 0n ? null : item.versionstamp(),
         };
       });
     });
@@ -153,7 +158,7 @@ export class Protocol {
             Check.createCheck(
               builder,
               createKvKey(builder, check.key),
-              check.version ?? 0n
+              check.versionstamp ?? 0n
             )
           )
         ),
@@ -207,13 +212,12 @@ export class Protocol {
     return builder.asUint8Array();
   }
 
-  decodeAtomicWriteOutput(data: Uint8Array): {
-    ok: boolean;
-    version: bigint;
-  } {
+  decodeAtomicWriteOutput(data: Uint8Array): KvCommitResult | KvCommitError {
     const buffer = new flatbuffers.ByteBuffer(data);
     const output = AtomicWriteOutput.getRootAsAtomicWriteOutput(buffer);
-    return { ok: output.ok(), version: output.version() };
+    return { ok: output.ok(), versionstamp: output.versionstamp() ?? null } as
+      | KvCommitResult
+      | KvCommitError;
   }
 
   encodeWatch({
@@ -250,11 +254,11 @@ export class Protocol {
       const valueArray = item.valueArray();
       const value = valueArray
         ? this.#decodeKvValue(valueArray, item.encoding())
-        : undefined;
+        : null;
       return {
         key,
         value,
-        version: item.version() == 0n ? undefined : item.version(),
+        versionstamp: item.versionstamp() == 0n ? null : item.versionstamp(),
       };
     });
     return { id, values };
@@ -270,11 +274,11 @@ export class Protocol {
       const valueArray = item.valueArray();
       const value = valueArray
         ? this.#decodeKvValue(valueArray, item.encoding())
-        : undefined;
+        : null;
       return {
         key: keyArray!,
         value,
-        version: item.version() == 0n ? undefined : item.version(),
+        versionstamp: item.versionstamp() == 0n ? null : item.versionstamp(),
       };
     });
     return { id, values };
@@ -322,7 +326,7 @@ export class Protocol {
       const valueArray = item.valueArray();
       const value = valueArray
         ? this.#decodeKvValue(valueArray, item.encoding())
-        : undefined;
+        : null;
       return {
         key: keyArray!,
         value,

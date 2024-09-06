@@ -15,7 +15,7 @@ class Server;
 struct ValuePack {
   std::string           value;
   shared::ValueEncoding encoding;
-  uint64_t              version;
+  uint64_t              versionstamp;
 };
 
 struct EnqueueValuePack {
