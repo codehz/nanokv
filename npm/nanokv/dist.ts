@@ -28,3 +28,4 @@ await Bun.write(
     devDependencies: {},
   })
 );
+await Bun.$`cp README.md ../dist/README.md`
