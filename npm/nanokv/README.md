@@ -1,4 +1,7 @@
-# NanoKV
+<h1>
+<img src="https://github.com/user-attachments/assets/dd946ac1-2f41-4c95-a698-888124f70114" width="96px" />
+NanoKV
+</h1>
 
 [![typedoc](https://github.com/codehz/nanokv/actions/workflows/typedoc.yml/badge.svg)](https://github.com/codehz/nanokv/actions/workflows/typedoc.yml)
 
