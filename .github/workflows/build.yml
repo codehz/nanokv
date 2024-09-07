@@ -55,6 +55,7 @@ jobs:
           key: xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}-${{ matrix.mode }}-${{ hashFiles('xmake.lua') }}
           restore-keys: |
             xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}-${{ matrix.mode }}-${{ hashFiles('xmake.lua') }}
+            xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}-${{ matrix.mode }}
             xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}
       - name: Setup ${{ matrix.cfg.toolchain }} ${{ matrix.cfg.arch }}
         run: xmake f -y --toolchain=${{ matrix.cfg.toolchain }} --arch=${{ matrix.cfg.arch }} --mode=${{ matrix.mode }}
