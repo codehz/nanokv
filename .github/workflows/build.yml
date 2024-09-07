@@ -57,7 +57,7 @@ jobs:
             xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}-${{ matrix.mode }}-${{ hashFiles('xmake.lua') }}
             xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}
       - name: Setup ${{ matrix.cfg.toolchain }} ${{ matrix.cfg.arch }}
-        run: xmake f -y --policies=package.install_only --toolchain=${{ matrix.cfg.toolchain }} --arch=${{ matrix.cfg.arch }} --mode=${{ matrix.mode }}
+        run: xmake f -y --toolchain=${{ matrix.cfg.toolchain }} --arch=${{ matrix.cfg.arch }} --mode=${{ matrix.mode }}
       - name: Build
         run: xmake -vy
       - name: Install to temp
