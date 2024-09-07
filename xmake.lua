@@ -3,6 +3,7 @@ option("ssl", {default = true})
 
 if has_config("ssl") then
   if is_plat("windows") then
+    add_requireconfs("uwebsockets.openssl", {system = false})
     add_requireconfs("uwebsockets.usockets", {configs = {ssl = "openssl"}})
   else
     add_requireconfs("uwebsockets.usockets", {configs = {ssl = "openssl3"}})
