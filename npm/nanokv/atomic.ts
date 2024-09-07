@@ -35,7 +35,10 @@ import type {
  * Other failures, such as storage errors or invalid values, trigger exceptions.
  * Successful operations return a {@link KvCommitResult} object with an ok: true property, along with the versionstamp of the committed value.
  */
-export interface AtomicOperation<E extends KvEntry, Q extends KvQueueEntry> {
+export interface AtomicOperation<
+  E extends KvEntry = KvEntry,
+  Q extends KvQueueEntry = KvQueueEntry
+> {
   /**
    * Add to the operation a check that ensures that the versionstamp of the key-value pair in the KV store matches the given versionstamp.
    * If the check fails, the entire operation will fail and no mutations will be performed during the commit.
@@ -78,7 +81,7 @@ export interface AtomicOperation<E extends KvEntry, Q extends KvQueueEntry> {
    */
   commit(): Promise<KvCommitResult | KvCommitError>;
 
-  merge(operation: AtomicOperation<KvEntry, KvQueueEntry>): this;
+  merge(operation: AtomicOperation): this;
 
   /** @hidden */
   dump(): {
@@ -169,7 +172,7 @@ export class AtomicOperationImpl<E extends KvEntry, Q extends KvQueueEntry>
       dequeues: this.#dequeues,
     });
   }
-  merge(operation: AtomicOperation<KvEntry, KvQueueEntry>): this {
+  merge(operation: AtomicOperation): this {
     const { checks, mutations, enqueues, dequeues } = operation.dump();
     this.#checks.push(...checks);
     this.#mutations.push(...mutations);
@@ -195,13 +198,10 @@ export class AtomicOperationImpl<E extends KvEntry, Q extends KvQueueEntry>
 export class AtomicOperationProxy<E extends KvEntry, Q extends KvQueueEntry>
   implements AtomicOperation<E, Q>
 {
-  #operation: AtomicOperation<KvEntry, KvQueueEntry>;
+  #operation: AtomicOperation;
   #prefix: KvKey;
 
-  constructor(
-    operation: AtomicOperation<KvEntry, KvQueueEntry>,
-    prefix: KvKey
-  ) {
+  constructor(operation: AtomicOperation, prefix: KvKey) {
     this.#operation = operation;
     this.#prefix = prefix;
   }
@@ -245,7 +245,7 @@ export class AtomicOperationProxy<E extends KvEntry, Q extends KvQueueEntry>
   commit(): Promise<KvCommitResult | KvCommitError> {
     return this.#operation.commit();
   }
-  merge(operation: AtomicOperation<KvEntry, KvQueueEntry>): this {
+  merge(operation: AtomicOperation): this {
     this.#operation.merge(operation);
     return this;
   }
