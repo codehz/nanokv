@@ -52,8 +52,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ env.XMAKE_GLOBALDIR }}/.xmake/packages
-          key: xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}-${{ hashFiles('xmake.lua') }}
+          key: xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}-${{ hashFiles('xmake.lua') }}-${{ matrix.mode }}
           restore-keys: |
+            xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}-${{ hashFiles('xmake.lua') }}-${{ matrix.mode }}
             xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}-${{ hashFiles('xmake.lua') }}
             xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}-
       - name: Setup ${{ matrix.cfg.toolchain }} ${{ matrix.cfg.arch }}
