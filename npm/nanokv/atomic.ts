@@ -77,6 +77,16 @@ export interface AtomicOperation<E extends KvEntry, Q extends KvQueueEntry> {
    * See the note on optimistic locking in the documentation for {@link AtomicOperation}.
    */
   commit(): Promise<KvCommitResult | KvCommitError>;
+
+  merge(operation: AtomicOperation<KvEntry, KvQueueEntry>): this;
+
+  /** @hidden */
+  dump(): {
+    checks: RawCheck[];
+    mutations: RawMutation[];
+    enqueues: RawEnqueue[];
+    dequeues: RawDequeue[];
+  };
 }
 
 export class AtomicOperationImpl<E extends KvEntry, Q extends KvQueueEntry>
@@ -159,6 +169,27 @@ export class AtomicOperationImpl<E extends KvEntry, Q extends KvQueueEntry>
       dequeues: this.#dequeues,
     });
   }
+  merge(operation: AtomicOperation<KvEntry, KvQueueEntry>): this {
+    const { checks, mutations, enqueues, dequeues } = operation.dump();
+    this.#checks.push(...checks);
+    this.#mutations.push(...mutations);
+    this.#enqueues.push(...enqueues);
+    this.#dequeues.push(...dequeues);
+    return this;
+  }
+  dump(): {
+    checks: RawCheck[];
+    mutations: RawMutation[];
+    enqueues: RawEnqueue[];
+    dequeues: RawDequeue[];
+  } {
+    return {
+      checks: this.#checks,
+      mutations: this.#mutations,
+      enqueues: this.#enqueues,
+      dequeues: this.#dequeues,
+    };
+  }
 }
 
 export class AtomicOperationProxy<E extends KvEntry, Q extends KvQueueEntry>
@@ -213,5 +244,17 @@ export class AtomicOperationProxy<E extends KvEntry, Q extends KvQueueEntry>
   }
   commit(): Promise<KvCommitResult | KvCommitError> {
     return this.#operation.commit();
+  }
+  merge(operation: AtomicOperation<KvEntry, KvQueueEntry>): this {
+    this.#operation.merge(operation);
+    return this;
+  }
+  dump(): {
+    checks: RawCheck[];
+    mutations: RawMutation[];
+    enqueues: RawEnqueue[];
+    dequeues: RawDequeue[];
+  } {
+    return this.#operation.dump();
   }
 }
