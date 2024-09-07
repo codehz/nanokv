@@ -52,8 +52,8 @@ const END = new Uint8Array([0xff]);
 
 export type KvPairNotFound<X extends KvPair> = {
   key: X["key"];
-  value: undefined;
-  versionstamp: undefined;
+  value: null;
+  versionstamp: null;
 };
 export type KvPairMaybe<X extends KvPair> = X | KvPairNotFound<X>;
 
@@ -61,7 +61,7 @@ class WatchState {
   entry: KvEntryMaybe;
   #reactors: Reactor<void>[] = [];
   constructor(key: KvKey, public packed: Uint8Array, reactor: Reactor<void>) {
-    this.entry = { key, value: undefined, versionstamp: 0n };
+    this.entry = { key, value: null, versionstamp: null };
     this.#reactors.push(reactor);
   }
   addReactor(reactor: Reactor<void>) {
@@ -391,9 +391,9 @@ export class NanoKV<
       } as SelectKvPair<E, K>;
     return {
       key,
-      value: undefined,
-      versionstamp: undefined,
-    } as KvPairNotFound<SelectKvPair<E, K>>;
+      value: null,
+      versionstamp: null,
+    } satisfies KvPairNotFound<SelectKvPair<E, K>>;
   }
 
   async getMany<Ks extends E["key"][] | []>(
@@ -408,8 +408,8 @@ export class NanoKV<
       if (!entry)
         return {
           key: keys[i],
-          value: undefined,
-          versionstamp: undefined,
+          value: null,
+          versionstamp: null,
         };
       return {
         key: entry.key,
