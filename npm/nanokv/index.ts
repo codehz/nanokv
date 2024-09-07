@@ -1,5 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { type AtomicOperation, AtomicOperationImpl } from "./atomic";
+import {
+  type AtomicOperation,
+  AtomicOperationImpl,
+  AtomicOperationProxy,
+} from "./atomic";
 import { packKey, unpackKey } from "./kv_key";
 import { MutationType } from "./packet";
 import {
@@ -14,7 +18,10 @@ import {
 } from "./protocol";
 import { Reactor } from "./reactor";
 import type {
+  DistributiveProp,
   KvKeyPrefix,
+  KvKeyToObject,
+  RemoveKvPairPrefix,
   SelectKvPair,
   SelectKvPairByPrefix,
   ValueFotKvPair,
@@ -118,7 +125,7 @@ export interface KvApi<
   set<K extends E["key"]>(
     key: K,
     value: ValueFotKvPair<E, K>,
-    options: { expireIn?: number }
+    options?: { expireIn?: number }
   ): Promise<KvCommitResult | KvCommitError>;
   /**
    * Delete the value for the given key from the database.
@@ -151,9 +158,9 @@ export interface KvApi<
     options?: KvListOptions
   ): ReadableStream<SelectKvPairByPrefix<E, P>>;
   /**
-   * Create a new {@link AtomicOperationImpl} object which can be used to perform an atomic transaction on the database.
+   * Create a new {@link AtomicOperation} object which can be used to perform an atomic transaction on the database.
    * This does not perform any operations on the database -
-   * the atomic transaction must be committed explicitly using the {@link AtomicOperationImpl.commit} method once all checks and mutations have been added to the operation.
+   * the atomic transaction must be committed explicitly using the {@link AtomicOperation.commit} method once all checks and mutations have been added to the operation.
    */
   atomic(): AtomicOperation<E, Q>;
   /**
@@ -174,25 +181,30 @@ export interface KvApi<
   watch<Ks extends E["key"][] | []>(
     keys: Ks
   ): ReadableStream<{
-    [N in keyof Ks & number]: KvPairMaybe<SelectKvPair<E, Ks[N]>>;
+    [N in keyof Ks]: KvPairMaybe<SelectKvPair<E, Ks[N]>>;
   }>;
   /**
    * Listen for queue values to be delivered from the database queue,
-   * which were enqueued with {@link AtomicOperationImpl.enqueue}, you can spcify which keys to listen to.
+   * which were enqueued with {@link AtomicOperation.enqueue}, you can spcify which keys to listen to.
    *
-   * You need to use {@link AtomicOperationImpl.dequeue} to dequeue values from the queue after you have received and processed them,
+   * You need to use {@link AtomicOperation.dequeue} to dequeue values from the queue after you have received and processed them,
    * or you will get duplicates in next time you call this method.
    *
    * @param {...const Ks extends Q["key"][]} keys - The keys to listen to.
-   * @return {ReadableStream<{ [N in keyof Ks]: _KvWithKey<Q, Ks[N]> }[keyof Ks & number]>} A readable stream of key-value pairs.
+   * @return {ReadableStream<{ [N in keyof Ks]: _KvWithKey<Q, Ks[N]> }[keyof Ks]>} A readable stream of key-value pairs.
    */
   listenQueue<Ks extends Q["key"][] | []>(
     ...keys: Ks
   ): ReadableStream<
     {
-      [N in keyof Ks & number]: SelectKvPair<Q, Ks[N]>;
-    }[keyof Ks & number]
+      [N in keyof Ks]: SelectKvPair<Q, Ks[N]>;
+    }[keyof Ks]
   >;
+
+  /** Get a subspace of the database, operating on all key with the given prefix. */
+  subspace<P extends KvKeyPrefix<E["key"]> & KvKeyPrefix<Q["key"]>>(
+    prefix: P
+  ): KvApi<RemoveKvPairPrefix<E, P>, RemoveKvPairPrefix<Q, P>>;
 }
 
 /**
@@ -218,7 +230,7 @@ export interface KvApi<
  * and thus denokv will attempt to redeliver to the consumer within a specific time frame
  * (with settings for the number of retries and frequency).
  * In contrast, NanoKV leans more towards the essence of a "queue",
- * where consumers can retrieve outdated messages from the queue (if not manually {@link AtomicOperationImpl.dequeue dequeued}),
+ * where consumers can retrieve outdated messages from the queue (if not manually {@link AtomicOperation.dequeue dequeued}),
  * as well as receive new messages in real-time.
  *
  * Additionally, NanoKV supports the existence of multiple queues simultaneously.
@@ -485,14 +497,14 @@ export class NanoKV<
   watch<Ks extends E["key"][] | []>(
     keys: Ks
   ): ReadableStream<{
-    [N in keyof Ks & number]: KvPairMaybe<SelectKvPair<E, Ks[N]>>;
+    [N in keyof Ks]: KvPairMaybe<SelectKvPair<E, Ks[N]>>;
   }> {
     const reactor = new Reactor<void>();
     const cached = new Map<string, Uint8Array>();
     const id = this.#genWatchId();
     this.#firstWatch.set(id, reactor);
     return new ReadableStream<{
-      [N in keyof Ks & number]: KvPairMaybe<SelectKvPair<E, Ks[N]>>;
+      [N in keyof Ks]: KvPairMaybe<SelectKvPair<E, Ks[N]>>;
     }>(
       {
         start: () => {
@@ -601,5 +613,80 @@ export class NanoKV<
       },
       { highWaterMark: 0 }
     );
+  }
+  subspace<P extends KvKeyPrefix<E["key"]> & KvKeyPrefix<Q["key"]>>(
+    prefix: P
+  ): KvApi<RemoveKvPairPrefix<E, P>, RemoveKvPairPrefix<Q, P>> {
+    return new SubspaceProxy(this as KvApi, prefix);
+  }
+}
+
+class SubspaceProxy<
+  E extends KvEntry = KvEntry,
+  Q extends KvQueueEntry = KvQueueEntry
+> implements KvApi<E, Q>
+{
+  #parent: KvApi;
+  #prefix: KvKey;
+  constructor(parent: KvApi, prefix: KvKey) {
+    this.#parent = parent;
+    this.#prefix = prefix;
+  }
+  get<K extends E["key"]>(
+    key: K
+  ): Promise<KvPairMaybe<Extract<E, { key: K }>>> {
+    return this.#parent.get([...this.#prefix, ...key]) as any;
+  }
+  getMany<Ks extends [] | E["key"][]>(
+    keys: Ks
+  ): Promise<{ [N in keyof Ks]: KvPairMaybe<Extract<E, { key: Ks[N] }>> }> {
+    return this.#parent.getMany(
+      keys.map((key) => [...this.#prefix, ...key])
+    ) as any;
+  }
+  set<K extends E["key"]>(
+    key: K,
+    value: DistributiveProp<Extract<E, { key: KvKeyToObject<K> }>, "value">,
+    options?: { expireIn?: number }
+  ): Promise<KvCommitResult | KvCommitError> {
+    return this.#parent.set([...this.#prefix, ...key], value, options);
+  }
+  delete(key: E["key"]): Promise<KvCommitResult | KvCommitError> {
+    return this.#parent.delete([...this.#prefix, ...key]);
+  }
+  list<K extends E["key"], P extends KvKeyPrefix<K>>(
+    selector: KvListSelector<K, P>,
+    options?: KvListOptions
+  ): ReadableStream<Extract<E, { key: KvKeyToObject<P> }>> {
+    return this.#parent.list(
+      Object.fromEntries(
+        Object.entries(selector).map(([k, v]) => [k, [...this.#prefix, ...v]])
+      ) as any,
+      options
+    ) as any;
+  }
+  atomic(): AtomicOperation<E, Q> {
+    return new AtomicOperationProxy(this.#parent.atomic(), this.#prefix);
+  }
+  watch<Ks extends [] | E["key"][]>(
+    keys: Ks
+  ): ReadableStream<{
+    [N in keyof Ks]: KvPairMaybe<Extract<E, { key: Ks[N] }>>;
+  }> {
+    return this.#parent.watch(
+      keys.map((key) => [...this.#prefix, ...key])
+    ) as any;
+  }
+  listenQueue<Ks extends [] | Q["key"][]>(
+    ...keys: Ks
+  ): ReadableStream<{ [N in keyof Ks]: Extract<Q, { key: Ks[N] }> }[keyof Ks]> {
+    return this.#parent.listenQueue(
+      ...keys.map((key) => [...this.#prefix, ...key])
+    ) as any;
+  }
+  subspace<P extends KvKeyPrefix<E["key"]> & KvKeyPrefix<Q["key"]>>(
+    prefix: P
+  ): KvApi<RemoveKvPairPrefix<E, P>, RemoveKvPairPrefix<Q, P>> {
+    return new SubspaceProxy(this.#parent, [...this.#prefix, ...prefix]);
   }
 }

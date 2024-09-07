@@ -1,11 +1,16 @@
 import { MutationType } from "./packet";
 import type { RawCheck, RawDequeue, RawEnqueue, RawMutation } from "./protocol";
-import type { ValueFotKvPair } from "./type_helpers";
+import type {
+  DistributiveProp,
+  KvKeyToObject,
+  ValueFotKvPair,
+} from "./type_helpers";
 import type {
   AtomicCheck,
   KvCommitError,
   KvCommitResult,
   KvEntry,
+  KvKey,
   KvQueueEntry,
 } from "./types";
 
@@ -69,12 +74,14 @@ export interface AtomicOperation<E extends KvEntry, Q extends KvQueueEntry> {
    * If the operation succeeded, the return value will be a {@link KvCommitResult} object with a ok: true property and the versionstamp of the value committed to KV.
    *
    * If the commit returns ok: false, one may create a new atomic operation with updated checks and mutations and attempt to commit it again.
-   * See the note on optimistic locking in the documentation for {@link AtomicOperationImpl}.
+   * See the note on optimistic locking in the documentation for {@link AtomicOperation}.
    */
   commit(): Promise<KvCommitResult | KvCommitError>;
 }
 
-export class AtomicOperationImpl<E extends KvEntry, Q extends KvQueueEntry> {
+export class AtomicOperationImpl<E extends KvEntry, Q extends KvQueueEntry>
+  implements AtomicOperation<E, Q>
+{
   #checks: RawCheck[] = [];
   #mutations: RawMutation[] = [];
   #enqueues: RawEnqueue[] = [];
@@ -151,5 +158,60 @@ export class AtomicOperationImpl<E extends KvEntry, Q extends KvQueueEntry> {
       enqueues: this.#enqueues,
       dequeues: this.#dequeues,
     });
+  }
+}
+
+export class AtomicOperationProxy<E extends KvEntry, Q extends KvQueueEntry>
+  implements AtomicOperation<E, Q>
+{
+  #operation: AtomicOperation<KvEntry, KvQueueEntry>;
+  #prefix: KvKey;
+
+  constructor(
+    operation: AtomicOperation<KvEntry, KvQueueEntry>,
+    prefix: KvKey
+  ) {
+    this.#operation = operation;
+    this.#prefix = prefix;
+  }
+  check(...entries: AtomicCheck<E["key"]>[]): this {
+    this.#operation.check(
+      ...entries.map((entry) => ({
+        key: [...this.#prefix, ...entry.key],
+        versionstamp: entry.versionstamp,
+      }))
+    );
+    return this;
+  }
+  set<K extends E["key"]>(
+    key: K,
+    value: DistributiveProp<Extract<E, { key: KvKeyToObject<K> }>, "value">,
+    options?: { expireIn?: number }
+  ): this {
+    this.#operation.set([...this.#prefix, ...key], value, options);
+    return this;
+  }
+  delete<K extends E["key"]>(key: K): this {
+    this.#operation.delete([...this.#prefix, ...key]);
+    return this;
+  }
+  enqueue<K extends Q["key"]>(
+    key: K,
+    value: DistributiveProp<Extract<Q, { key: KvKeyToObject<K> }>, "value">,
+    options?: { delay?: number; schedule?: number }
+  ): this {
+    this.#operation.enqueue([...this.#prefix, ...key], value, options);
+    return this;
+  }
+  dequeue(
+    ...keys: { key: Q["key"]; schedule: number; sequence: bigint }[]
+  ): this {
+    this.#operation.dequeue(
+      ...keys.map((key) => ({ ...key, key: [...this.#prefix, ...key.key] }))
+    );
+    return this;
+  }
+  commit(): Promise<KvCommitResult | KvCommitError> {
+    return this.#operation.commit();
   }
 }

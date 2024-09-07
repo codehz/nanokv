@@ -1,7 +1,8 @@
 import { NanoKV, type KvEntry, type KvQueueEntry } from ".";
+import type { KvSubspace } from "./type_helpers";
 
 const kv = new NanoKV<
-  KvEntry<["test", number], string> | KvEntry<["test2", number], string>,
+  KvSubspace<["test"], KvEntry<[number], string>>,
   KvQueueEntry<["test-queue"], string>
 >("http://127.0.0.1:2256");
 
