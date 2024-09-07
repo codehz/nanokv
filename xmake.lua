@@ -4,10 +4,8 @@ option("ssl", {default = true})
 if has_config("ssl") then
   if is_plat("windows") then
     set_policy("package.install_only", true)
-    add_requireconfs("uwebsockets.usockets", {configs = {ssl = "openssl"}})
-  else
-    add_requireconfs("uwebsockets.usockets", {configs = {ssl = "openssl3"}})
   end
+  add_requireconfs("uwebsockets.usockets", {configs = {ssl = "openssl3"}})
 end
 add_requireconfs("uwebsockets", {configs = {zip = true, deflate = true}})
 add_requires("uwebsockets", "leveldb", "spdlog", "flatbuffers", "ctrl-c", "argz")
