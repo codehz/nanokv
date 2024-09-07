@@ -39,9 +39,9 @@ export type KvKeyPart = Uint8Array | string | number | bigint | boolean;
  * An optional versioned pair of key and value in a {@link NanoKV}.
  * This is the same as a KvEntry, but the value and versionstamp fields may be null if no value exists for the given key in the KV store.
  */
-export type KvEntryMaybe =
-  | KvEntry
-  | { key: KvKey; value: null; versionstamp: null };
+export type KvEntryMaybe<K = KvKey, V = any> =
+  | KvEntry<K, V>
+  | { key: K; value: null; versionstamp: null };
 
 export type KvPair<K = KvKey, V = any> = { key: K; value: V };
 
