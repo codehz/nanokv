@@ -1,4 +1,4 @@
-import type { RemoveTuplePrefix, TuplePrefix } from "./type_helpers";
+import type { RemoveKvKeyPrefix, KvKeyPrefix } from "./type_helpers";
 
 /**
  * A key to be persisted in a {@link NanoKV}. A key is a sequence of {@link KvKeyPart}s.
@@ -71,13 +71,13 @@ export type KvQueueEntry<K = KvKey, V = any> = KvPair<K, V> & {
  * A prefix selector selects all keys that start with the given prefix (optionally starting at a given key).
  * A range selector selects all keys that are lexicographically between the given start and end keys.
  */
-export type KvListSelector<K extends KvKey, P extends TuplePrefix<K>> =
+export type KvListSelector<K extends KvKey, P extends KvKeyPrefix<K>> =
   | { prefix: P }
-  | { prefix: P; start: TuplePrefix<RemoveTuplePrefix<K, P>> }
-  | { prefix: P; end: TuplePrefix<RemoveTuplePrefix<K, P>> }
+  | { prefix: P; start: KvKeyPrefix<RemoveKvKeyPrefix<K, P>> }
+  | { prefix: P; end: KvKeyPrefix<RemoveKvKeyPrefix<K, P>> }
   | {
-      start: TuplePrefix<RemoveTuplePrefix<K, P>>;
-      end: TuplePrefix<RemoveTuplePrefix<K, P>>;
+      start: KvKeyPrefix<RemoveKvKeyPrefix<K, P>>;
+      end: KvKeyPrefix<RemoveKvKeyPrefix<K, P>>;
     };
 
 /** Options for listing key-value pairs in a {@link NanoKV}. */
