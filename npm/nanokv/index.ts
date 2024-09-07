@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { type AtomicOperation, AtomicOperationImpl } from "./atomic";
 import { packKey, unpackKey } from "./kv_key";
 import { MutationType } from "./packet";
 import {
@@ -19,7 +20,6 @@ import type {
   ValueFotKvPair,
 } from "./type_helpers";
 import type {
-  AtomicCheck,
   KvCommitError,
   KvCommitResult,
   KvEntry,
@@ -32,6 +32,8 @@ import type {
 } from "./types";
 import { WebSocketConnection } from "./ws";
 export { type ProtocolEncoding } from "./protocol";
+
+export type { AtomicOperation } from "./atomic";
 export * from "./types";
 
 const START = new Uint8Array([0x00]);
@@ -81,6 +83,118 @@ class ListenState {
   }
 }
 
+export interface KvApi<
+  E extends KvEntry = KvEntry,
+  Q extends KvQueueEntry = KvQueueEntry
+> {
+  /**
+   * Retrieve the value and versionstamp for the given key from the database in the form of a {@link KvEntryMaybe}.
+   * If no value exists for the key, the returned entry will have a null value and versionstamp.
+   */
+  get<K extends E["key"]>(key: K): Promise<KvPairMaybe<SelectKvPair<E, K>>>;
+  /**
+   * Retrieve multiple values and versionstamp from the database in the form of an array of {@link KvEntryMaybe} objects.
+   * The returned array will have the same length as the keys array, and the entries will be in the same order as the keys.
+   * If no value exists for a given key, the returned entry will have a null value and versionstamp.
+   */
+  getMany<Ks extends E["key"][] | []>(
+    keys: Ks
+  ): Promise<{
+    [N in keyof Ks]: KvPairMaybe<SelectKvPair<E, Ks[N]>>;
+  }>;
+  /**
+   * Set the value for the given key in the database. If a value already exists for the key, it will be overwritten.
+   *
+   * Optionally an expireIn option can be specified to set a time-to-live (TTL) for the key.
+   * The TTL is specified in milliseconds, and the key will be deleted from the database at earliest after the specified number of milliseconds have elapsed.
+   * Once the specified duration has passed, the key may still be visible for some additional time.
+   * If the expireIn option is not specified, the key will not expire.
+   *
+   * @param key - The key to set.
+   * @param value - The value to set.
+   * @param options - Options for the set operation.
+   * @param options.expireIn - The number of milliseconds after which the key-value entry will expire.
+   */
+  set<K extends E["key"]>(
+    key: K,
+    value: ValueFotKvPair<E, K>,
+    options: { expireIn?: number }
+  ): Promise<KvCommitResult | KvCommitError>;
+  /**
+   * Delete the value for the given key from the database.
+   * If no value exists for the key, this operation is a no-op.
+   *
+   * @param key - The key to delete.
+   * @return A promise resolving to an object containing a boolean indicating whether the operation was successful, and the versionstamp of the deleted key-value entry.
+   */
+  delete(key: E["key"]): Promise<KvCommitResult | KvCommitError>;
+  /**
+   * Retrieve a list of keys in the database.
+   * The returned list is a ReadableStream which can be used to iterate over the entries in the database.
+   * Each list operation must specify a selector which is used to specify the range of keys to return.
+   * The selector can either be a prefix selector, or a range selector:
+   * * A prefix selector selects all keys that start with the given prefix of key parts.
+   *   For example, the selector ["users"] will select all keys that start with the prefix ["users"], such as ["users", "alice"] and ["users", "bob"].
+   *   Note that you can not partially match a key part, so the selector ["users", "a"] will not match the key ["users", "alice"].
+   *   A prefix selector may specify a start key that is used to skip over keys that are lexicographically less than the start key.
+   * * A range selector selects all keys that are lexicographically between the given start and end keys
+   *   (including the start, and excluding the end).
+   *   For example, the selector ["users", "a"], ["users", "n"] will select all keys that start with the prefix ["users"] and have a second key part that is lexicographically between a and n,
+   *   such as ["users", "alice"], ["users", "bob"], and ["users", "mike"], but not ["users", "noa"] or ["users", "zoe"].
+   *
+   * @see
+   * The options argument can be used to specify additional options for the list operation.
+   * See the documentation for {@link KvListOptions} for more information.
+   */
+  list<K extends E["key"], P extends KvKeyPrefix<K>>(
+    selector: KvListSelector<K, P>,
+    options?: KvListOptions
+  ): ReadableStream<SelectKvPairByPrefix<E, P>>;
+  /**
+   * Create a new {@link AtomicOperationImpl} object which can be used to perform an atomic transaction on the database.
+   * This does not perform any operations on the database -
+   * the atomic transaction must be committed explicitly using the {@link AtomicOperationImpl.commit} method once all checks and mutations have been added to the operation.
+   */
+  atomic(): AtomicOperation<E, Q>;
+  /**
+   * Watch for changes to the given keys in the database.
+   * The returned stream is a ReadableStream that emits a new value whenever any of the watched keys change their versionstamp.
+   * The emitted value is an array of KvEntryMaybe objects,
+   * with the same length and order as the keys array.
+   * If no value exists for a given key, the returned entry will have a null value and versionstamp.
+   *
+   * The returned stream does not return every single intermediate state of the watched keys,
+   * but rather only keeps you up to date with the latest state of the keys.
+   * This means that if a key is modified multiple times quickly,
+   * you may not receive a notification for every single change,
+   * but rather only the latest state of the key.
+   *
+   * @param {E["key"][]} keys - An array of keys to watch for changes.
+   */
+  watch<Ks extends E["key"][] | []>(
+    keys: Ks
+  ): ReadableStream<{
+    [N in keyof Ks & number]: KvPairMaybe<SelectKvPair<E, Ks[N]>>;
+  }>;
+  /**
+   * Listen for queue values to be delivered from the database queue,
+   * which were enqueued with {@link AtomicOperationImpl.enqueue}, you can spcify which keys to listen to.
+   *
+   * You need to use {@link AtomicOperationImpl.dequeue} to dequeue values from the queue after you have received and processed them,
+   * or you will get duplicates in next time you call this method.
+   *
+   * @param {...const Ks extends Q["key"][]} keys - The keys to listen to.
+   * @return {ReadableStream<{ [N in keyof Ks]: _KvWithKey<Q, Ks[N]> }[keyof Ks & number]>} A readable stream of key-value pairs.
+   */
+  listenQueue<Ks extends Q["key"][] | []>(
+    ...keys: Ks
+  ): ReadableStream<
+    {
+      [N in keyof Ks & number]: SelectKvPair<Q, Ks[N]>;
+    }[keyof Ks & number]
+  >;
+}
+
 /**
  * @public
  * A key-value database designed for efficient data storage and retrieval.
@@ -104,7 +218,7 @@ class ListenState {
  * and thus denokv will attempt to redeliver to the consumer within a specific time frame
  * (with settings for the number of retries and frequency).
  * In contrast, NanoKV leans more towards the essence of a "queue",
- * where consumers can retrieve outdated messages from the queue (if not manually {@link AtomicOperation.dequeue dequeued}),
+ * where consumers can retrieve outdated messages from the queue (if not manually {@link AtomicOperationImpl.dequeue dequeued}),
  * as well as receive new messages in real-time.
  *
  * Additionally, NanoKV supports the existence of multiple queues simultaneously.
@@ -128,7 +242,8 @@ class ListenState {
 export class NanoKV<
   E extends KvEntry = KvEntry,
   Q extends KvQueueEntry = KvQueueEntry
-> {
+> implements KvApi<E, Q>
+{
   #watch: WebSocketConnection;
   #subscriptions = new Map<string, WatchState>();
   #firstWatch = new Map<number, Reactor<void>>();
@@ -248,10 +363,6 @@ export class NanoKV<
     }
   }
 
-  /**
-   * Retrieve the value and versionstamp for the given key from the database in the form of a {@link KvEntryMaybe}.
-   * If no value exists for the key, the returned entry will have a null value and versionstamp.
-   */
   async get<K extends E["key"]>(
     key: K
   ): Promise<KvPairMaybe<SelectKvPair<E, K>>> {
@@ -269,11 +380,6 @@ export class NanoKV<
     } as KvPairNotFound<SelectKvPair<E, K>>;
   }
 
-  /**
-   * Retrieve multiple values and versionstamp from the database in the form of an array of {@link KvEntryMaybe} objects.
-   * The returned array will have the same length as the keys array, and the entries will be in the same order as the keys.
-   * If no value exists for a given key, the returned entry will have a null value and versionstamp.
-   */
   async getMany<Ks extends E["key"][] | []>(
     keys: Ks
   ): Promise<{
@@ -297,19 +403,6 @@ export class NanoKV<
     }) as any;
   }
 
-  /**
-   * Set the value for the given key in the database. If a value already exists for the key, it will be overwritten.
-   *
-   * Optionally an expireIn option can be specified to set a time-to-live (TTL) for the key.
-   * The TTL is specified in milliseconds, and the key will be deleted from the database at earliest after the specified number of milliseconds have elapsed.
-   * Once the specified duration has passed, the key may still be visible for some additional time.
-   * If the expireIn option is not specified, the key will not expire.
-   *
-   * @param key - The key to set.
-   * @param value - The value to set.
-   * @param options - Options for the set operation.
-   * @param options.expireIn - The number of milliseconds after which the key-value entry will expire.
-   */
   async set<K extends E["key"]>(
     key: K,
     value: ValueFotKvPair<E, K>,
@@ -327,37 +420,12 @@ export class NanoKV<
     });
   }
 
-  /**
-   * Delete the value for the given key from the database.
-   * If no value exists for the key, this operation is a no-op.
-   *
-   * @param key - The key to delete.
-   * @return A promise resolving to an object containing a boolean indicating whether the operation was successful, and the versionstamp of the deleted key-value entry.
-   */
   async delete(key: E["key"]): Promise<KvCommitResult | KvCommitError> {
     return await this.#atomic_write({
       mutations: [{ key, type: MutationType.DELETE }],
     });
   }
 
-  /**
-   * Retrieve a list of keys in the database.
-   * The returned list is a ReadableStream which can be used to iterate over the entries in the database.
-   * Each list operation must specify a selector which is used to specify the range of keys to return.
-   * The selector can either be a prefix selector, or a range selector:
-   * * A prefix selector selects all keys that start with the given prefix of key parts.
-   *   For example, the selector ["users"] will select all keys that start with the prefix ["users"], such as ["users", "alice"] and ["users", "bob"].
-   *   Note that you can not partially match a key part, so the selector ["users", "a"] will not match the key ["users", "alice"].
-   *   A prefix selector may specify a start key that is used to skip over keys that are lexicographically less than the start key.
-   * * A range selector selects all keys that are lexicographically between the given start and end keys
-   *   (including the start, and excluding the end).
-   *   For example, the selector ["users", "a"], ["users", "n"] will select all keys that start with the prefix ["users"] and have a second key part that is lexicographically between a and n,
-   *   such as ["users", "alice"], ["users", "bob"], and ["users", "mike"], but not ["users", "noa"] or ["users", "zoe"].
-   *
-   * @see
-   * The options argument can be used to specify additional options for the list operation.
-   * See the documentation for {@link KvListOptions} for more information.
-   */
   list<K extends E["key"], P extends KvKeyPrefix<K>>(
     selector: KvListSelector<K, P>,
     options: KvListOptions = {}
@@ -403,13 +471,8 @@ export class NanoKV<
     );
   }
 
-  /**
-   * Create a new {@link AtomicOperation} object which can be used to perform an atomic transaction on the database.
-   * This does not perform any operations on the database -
-   * the atomic transaction must be committed explicitly using the {@link AtomicOperation.commit} method once all checks and mutations have been added to the operation.
-   */
   atomic(): AtomicOperation<E, Q> {
-    return new AtomicOperation(this.#atomic_write.bind(this));
+    return new AtomicOperationImpl(this.#atomic_write.bind(this));
   }
 
   #genWatchId() {
@@ -419,21 +482,6 @@ export class NanoKV<
     }
   }
 
-  /**
-   * Watch for changes to the given keys in the database.
-   * The returned stream is a ReadableStream that emits a new value whenever any of the watched keys change their versionstamp.
-   * The emitted value is an array of KvEntryMaybe objects,
-   * with the same length and order as the keys array.
-   * If no value exists for a given key, the returned entry will have a null value and versionstamp.
-   *
-   * The returned stream does not return every single intermediate state of the watched keys,
-   * but rather only keeps you up to date with the latest state of the keys.
-   * This means that if a key is modified multiple times quickly,
-   * you may not receive a notification for every single change,
-   * but rather only the latest state of the key.
-   *
-   * @param {E["key"][]} keys - An array of keys to watch for changes.
-   */
   watch<Ks extends E["key"][] | []>(
     keys: Ks
   ): ReadableStream<{
@@ -501,16 +549,6 @@ export class NanoKV<
     );
   }
 
-  /**
-   * Listen for queue values to be delivered from the database queue,
-   * which were enqueued with {@link AtomicOperation.enqueue}, you can spcify which keys to listen to.
-   *
-   * You need to use {@link AtomicOperation.dequeue} to dequeue values from the queue after you have received and processed them,
-   * or you will get duplicates in next time you call this method.
-   *
-   * @param {...const Ks extends Q["key"][]} keys - The keys to listen to.
-   * @return {ReadableStream<{ [N in keyof Ks]: _KvWithKey<Q, Ks[N]> }[keyof Ks & number]>} A readable stream of key-value pairs.
-   */
   listenQueue<Ks extends Q["key"][] | []>(
     ...keys: Ks
   ): ReadableStream<
@@ -563,132 +601,5 @@ export class NanoKV<
       },
       { highWaterMark: 0 }
     );
-  }
-}
-
-/**
- * An atomic operation on {@link NanoKV} allows for multiple updates to be conducted in a single, indivisible transaction.
- * These operations require explicit commitment through the invocation of the commit method, as they do not auto-commit by default.
- *
- * Atomic operations facilitate the execution of several mutations on the key-value store in a single transaction, ensuring consistency.
- * They also enable conditional updates by incorporating {@link AtomicCheck}s, which verify that mutations only occur if the key-value pair meets specific versionstamp criteria.
- * Should any check fail, the entire operation is aborted, leaving the store unchanged.
- *
- * The sequence of mutations is preserved as per the order specified in the operation, with checks executed prior to any mutations, although the sequence of checks is not observable.
- *
- * Atomic operations are instrumental in implementing optimistic locking,
- * a strategy where a mutation is executed only if the key-value pair has remained unaltered since the last read operation.
- * This is achieved by including a check to verify that the versionstamp of the key-value pair has not changed since it was last accessed.
- * If the check fails, the mutation is aborted, and the operation is considered unsuccessful.
- * The read-modify-write cycle can be repeated in a loop until it completes successfully.
- *
- * The commit method of an atomic operation yields a result indicating the success of checks and the execution of mutations.
- * A {@link KvCommitError} with an `ok: false` property signifies failure due to a check.
- * Other failures, such as storage errors or invalid values, trigger exceptions.
- * Successful operations return a {@link KvCommitResult} object with an ok: true property, along with the versionstamp of the committed value.
- * @hideconstructor
- */
-export class AtomicOperation<E extends KvEntry, Q extends KvQueueEntry> {
-  #checks: RawCheck[] = [];
-  #mutations: RawMutation[] = [];
-  #enqueues: RawEnqueue[] = [];
-  #dequeues: RawDequeue[] = [];
-
-  /** @hidden */
-  #committer: (param: {
-    checks: RawCheck[];
-    mutations: RawMutation[];
-    enqueues: RawEnqueue[];
-    dequeues: RawDequeue[];
-  }) => Promise<KvCommitResult | KvCommitError>;
-
-  constructor(
-    committer: (param: {
-      checks?: RawCheck[];
-      mutations?: RawMutation[];
-      enqueues?: RawEnqueue[];
-      dequeues?: RawDequeue[];
-    }) => Promise<KvCommitResult | KvCommitError>
-  ) {
-    this.#committer = committer;
-  }
-
-  /**
-   * Add to the operation a check that ensures that the versionstamp of the key-value pair in the KV store matches the given versionstamp.
-   * If the check fails, the entire operation will fail and no mutations will be performed during the commit.
-   */
-  check(...entries: AtomicCheck<E["key"]>[]): this {
-    this.#checks.push(...entries);
-    return this;
-  }
-
-  /**
-   * Add to the operation a mutation that sets the value of the specified key to the specified value if all checks pass during the commit.
-   *
-   * Optionally an expireIn option can be specified to set a time-to-live (TTL) for the key.
-   * The TTL is specified in milliseconds, and the key will be deleted from the database at earliest after the specified number of milliseconds have elapsed.
-   * Once the specified duration has passed, the key may still be visible for some additional time.
-   * If the expireIn option is not specified, the key will not expire.
-   */
-  set<K extends E["key"]>(
-    key: K,
-    value: ValueFotKvPair<E, K>,
-    { expireIn }: { expireIn?: number } = {}
-  ): this {
-    this.#mutations.push({
-      key,
-      type: MutationType.SET,
-      value,
-      expired_at: expireIn ? Date.now() + expireIn : undefined,
-    });
-    return this;
-  }
-
-  /** Add to the operation a mutation that deletes the specified key if all checks pass during the commit. */
-  delete<K extends E["key"]>(key: K): this {
-    this.#mutations.push({ key, type: MutationType.DELETE });
-    return this;
-  }
-
-  /** Add to the operation a mutation that enqueues a value into the queue if all checks pass during the commit. */
-  enqueue<K extends Q["key"]>(
-    key: K,
-    value: ValueFotKvPair<Q, K>,
-    {
-      delay = 0,
-      schedule = delay === 0 ? undefined : Date.now() + delay,
-    }: { delay?: number; schedule?: number } = {}
-  ): this {
-    this.#enqueues.push({
-      key,
-      value,
-      schedule,
-    });
-    return this;
-  }
-
-  /** Add to the operation a mutation that dequeues a value from the queue if all checks pass during the commit. */
-  dequeue(...keys: { key: Q["key"]; schedule: number; sequence: bigint }[]) {
-    this.#dequeues.push(...keys);
-    return this;
-  }
-
-  /**
-   * Commit the operation to the KV store.
-   * Returns a value indicating whether checks passed and mutations were performed.
-   * If the operation failed because of a failed check, the return value will be a {@link KvCommitError} with an ok: false property.
-   * If the operation failed for any other reason (storage error, invalid value, etc.), an exception will be thrown.
-   * If the operation succeeded, the return value will be a {@link KvCommitResult} object with a ok: true property and the versionstamp of the value committed to KV.
-   *
-   * If the commit returns ok: false, one may create a new atomic operation with updated checks and mutations and attempt to commit it again.
-   * See the note on optimistic locking in the documentation for {@link AtomicOperation}.
-   */
-  commit(): Promise<KvCommitResult | KvCommitError> {
-    return this.#committer({
-      checks: this.#checks,
-      mutations: this.#mutations,
-      enqueues: this.#enqueues,
-      dequeues: this.#dequeues,
-    });
   }
 }
