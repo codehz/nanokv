@@ -1,4 +1,7 @@
 name: typedoc
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
 
 on:
   push:
