@@ -13,6 +13,12 @@ import {
 } from "./protocol";
 import { Reactor } from "./reactor";
 import type {
+  FilterTupleValuePair,
+  FilterTupleValuePairByPrefix,
+  TuplePrefix,
+  ValueForTuple,
+} from "./type_helpers";
+import type {
   AtomicCheck,
   KvCommitError,
   KvCommitResult,
@@ -21,6 +27,7 @@ import type {
   KvKey,
   KvListOptions,
   KvListSelector,
+  KvPair,
   KvQueueEntry,
 } from "./types";
 import { WebSocketConnection } from "./ws";
@@ -30,30 +37,15 @@ export * from "./types";
 const START = new Uint8Array([0x00]);
 const END = new Uint8Array([0xff]);
 
-type _KvWithKey<
-  X extends KvEntry | KvQueueEntry,
-  K extends X["key"]
-> = X extends unknown ? (K extends Readonly<X["key"]> ? X : never) : never;
-type _KvPrefix<X extends readonly unknown[]> = unknown[] extends X
-  ? unknown[]
-  : X extends [unknown, ...infer Xs]
-  ? [] | [X[0]] | [X[0], ..._KvPrefix<Xs>]
-  : [];
-type _KvFindPrefix<
-  X extends KvEntry | KvQueueEntry,
-  K extends _KvPrefix<X["key"]>
-> = X extends unknown ? (K extends _KvPrefix<X["key"]> ? X : never) : never;
-
-type _KvEntryNotFound<X extends KvEntry> = {
+export type KvPairNotFound<X extends KvPair> = {
   key: X["key"];
   value: undefined;
   versionstamp: undefined;
 };
-
-type _KvMaybeEntry<X extends KvEntry> = X | _KvEntryNotFound<X>;
+export type KvPairMaybe<X extends KvPair> = X | KvPairNotFound<X>;
 
 class WatchState {
-  entry: KvEntryMaybe<any, any>;
+  entry: KvEntryMaybe;
   #reactors: Reactor<void>[] = [];
   constructor(key: KvKey, public packed: Uint8Array, reactor: Reactor<void>) {
     this.entry = { key, value: undefined, versionstamp: 0n };
@@ -66,7 +58,7 @@ class WatchState {
     this.#reactors = this.#reactors.filter((r) => r !== reactor);
     return this.#reactors.length === 0;
   }
-  notify(value: KvEntryMaybe<any, any>) {
+  notify(value: KvEntryMaybe) {
     if (this.entry.versionstamp === value.versionstamp) return;
     this.entry = value;
     for (const reactor of this.#reactors) {
@@ -76,14 +68,14 @@ class WatchState {
 }
 
 class ListenState {
-  localqueue: KvQueueEntry<any, any>[] = [];
+  localqueue: KvQueueEntry[] = [];
   reactor = new Reactor<void>();
 
   take() {
     return this.localqueue.splice(0);
   }
 
-  enqueue(entry: KvQueueEntry<any, any>) {
+  enqueue(entry: KvQueueEntry) {
     this.localqueue.push(entry);
     this.reactor.continue();
   }
@@ -119,8 +111,8 @@ class ListenState {
  * ```
  */
 export class NanoKV<
-  E extends KvEntry<any, any> = KvEntry<any, any>,
-  Q extends KvQueueEntry<any, any> = KvQueueEntry<any, any>
+  E extends KvEntry = KvEntry,
+  Q extends KvQueueEntry = KvQueueEntry
 > {
   #watch: WebSocketConnection;
   #subscriptions = new Map<string, WatchState>();
@@ -245,21 +237,21 @@ export class NanoKV<
    * Retrieve the value and versionstamp for the given key from the database in the form of a {@link KvEntryMaybe}.
    * If no value exists for the key, the returned entry will have a null value and versionstamp.
    */
-  async get<K extends Readonly<E["key"]>>(
+  async get<K extends E["key"]>(
     key: K
-  ): Promise<_KvMaybeEntry<_KvWithKey<E, K>>> {
+  ): Promise<KvPairMaybe<FilterTupleValuePair<E, K>>> {
     const [[entry]] = await this.#snapshot_read([{ start: key, exact: true }]);
     if (entry)
       return {
         key,
         value: entry.value as any,
         versionstamp: entry.versionstamp as bigint,
-      } as _KvWithKey<E, K>;
+      } as FilterTupleValuePair<E, K>;
     return {
       key,
       value: undefined,
       versionstamp: undefined,
-    } as _KvEntryNotFound<_KvWithKey<E, K>>;
+    } as KvPairNotFound<FilterTupleValuePair<E, K>>;
   }
 
   /**
@@ -267,9 +259,11 @@ export class NanoKV<
    * The returned array will have the same length as the keys array, and the entries will be in the same order as the keys.
    * If no value exists for a given key, the returned entry will have a null value and versionstamp.
    */
-  async getMany<const Ks extends Readonly<E["key"]>[]>(
+  async getMany<Ks extends E["key"][] | []>(
     keys: Ks
-  ): Promise<{ [N in keyof Ks]: _KvMaybeEntry<_KvWithKey<E, Ks[N]>> }> {
+  ): Promise<{
+    [N in keyof Ks]: KvPairMaybe<FilterTupleValuePair<E, Ks[N]>>;
+  }> {
     const result = await this.#snapshot_read(
       keys.map((key) => ({ start: key, exact: true } as const))
     );
@@ -301,9 +295,9 @@ export class NanoKV<
    * @param options - Options for the set operation.
    * @param options.expireIn - The number of milliseconds after which the key-value entry will expire.
    */
-  async set<K extends Readonly<E["key"]>>(
+  async set<K extends E["key"]>(
     key: K,
-    value: _KvWithKey<E, K>["value"],
+    value: ValueForTuple<E, K>,
     { expireIn }: { expireIn?: number } = {}
   ): Promise<KvCommitResult | KvCommitError> {
     return await this.#atomic_write({
@@ -325,9 +319,7 @@ export class NanoKV<
    * @param key - The key to delete.
    * @return A promise resolving to an object containing a boolean indicating whether the operation was successful, and the versionstamp of the deleted key-value entry.
    */
-  async delete<K extends Readonly<E["key"]>>(
-    key: K
-  ): Promise<KvCommitResult | KvCommitError> {
+  async delete(key: E["key"]): Promise<KvCommitResult | KvCommitError> {
     return await this.#atomic_write({
       mutations: [{ key, type: MutationType.DELETE }],
     });
@@ -351,10 +343,10 @@ export class NanoKV<
    * The options argument can be used to specify additional options for the list operation.
    * See the documentation for {@link KvListOptions} for more information.
    */
-  list<const K extends _KvPrefix<E["key"]>>(
-    selector: KvListSelector<K>,
+  list<K extends E["key"], P extends TuplePrefix<K>>(
+    selector: KvListSelector<K, P>,
     options: KvListOptions = {}
-  ): ReadableStream<_KvFindPrefix<E, K>> {
+  ): ReadableStream<FilterTupleValuePairByPrefix<E, P>> {
     let { limit = 500, reverse = false, batchSize = 128, cursor } = options;
     const base =
       "prefix" in selector
@@ -367,7 +359,7 @@ export class NanoKV<
     if (batchSize <= 0 || batchSize >= 1024 || !Number.isFinite(batchSize)) {
       batchSize = 1024;
     }
-    return new ReadableStream<_KvFindPrefix<E, K>>(
+    return new ReadableStream<FilterTupleValuePairByPrefix<E, P>>(
       {
         pull: async (controller) => {
           const [values] = await this.#snapshot_read([
@@ -425,17 +417,19 @@ export class NanoKV<
    * you may not receive a notification for every single change,
    * but rather only the latest state of the key.
    *
-   * @param {Readonly<E["key"]>[]} keys - An array of keys to watch for changes.
+   * @param {E["key"][]} keys - An array of keys to watch for changes.
    */
-  watch<const Ks extends Readonly<E["key"]>[]>(
+  watch<Ks extends E["key"][] | []>(
     keys: Ks
-  ): ReadableStream<{ [N in keyof Ks]: _KvMaybeEntry<_KvWithKey<E, Ks[N]>> }> {
+  ): ReadableStream<{
+    [N in keyof Ks & number]: KvPairMaybe<FilterTupleValuePair<E, Ks[N]>>;
+  }> {
     const reactor = new Reactor<void>();
     const cached = new Map<string, Uint8Array>();
     const id = this.#genWatchId();
     this.#firstWatch.set(id, reactor);
     return new ReadableStream<{
-      [N in keyof Ks]: _KvMaybeEntry<_KvWithKey<E, Ks[N]>>;
+      [N in keyof Ks & number]: KvPairMaybe<FilterTupleValuePair<E, Ks[N]>>;
     }>(
       {
         start: () => {
@@ -498,19 +492,23 @@ export class NanoKV<
    * The provided handler callback is invoked on every dequeued value.
    * A failed callback invocation is automatically retried multiple times until it succeeds or until the maximum number of retries is reached.
    *
-   * @param {...const Ks extends Readonly<Q["key"]>[]} keys - The keys to listen to.
+   * @param {...const Ks extends Q["key"][]} keys - The keys to listen to.
    * @return {ReadableStream<{ [N in keyof Ks]: _KvWithKey<Q, Ks[N]> }[keyof Ks & number]>} A readable stream of key-value pairs.
    */
-  listenQueue<const Ks extends Readonly<Q["key"]>[]>(
+  listenQueue<Ks extends Q["key"][] | []>(
     ...keys: Ks
   ): ReadableStream<
-    { [N in keyof Ks]: _KvWithKey<Q, Ks[N]> }[keyof Ks & number]
+    {
+      [N in keyof Ks & number]: FilterTupleValuePair<Q, Ks[N]>;
+    }[keyof Ks & number]
   > {
     const state = new ListenState();
     const cached = new Map<string, Uint8Array>();
     const packeds: Uint8Array[] = [];
     return new ReadableStream<
-      { [N in keyof Ks]: _KvWithKey<Q, Ks[N]> }[keyof Ks & number]
+      {
+        [N in keyof Ks & number]: FilterTupleValuePair<Q, Ks[N]>;
+      }[keyof Ks & number]
     >(
       {
         start: () => {
@@ -574,10 +572,7 @@ export class NanoKV<
  * Successful operations return a {@link KvCommitResult} object with an ok: true property, along with the versionstamp of the committed value.
  * @hideconstructor
  */
-export class AtomicOperation<
-  E extends KvEntry<any, any>,
-  Q extends KvQueueEntry<any, any>
-> {
+export class AtomicOperation<E extends KvEntry, Q extends KvQueueEntry> {
   #checks: RawCheck[] = [];
   #mutations: RawMutation[] = [];
   #enqueues: RawEnqueue[] = [];
@@ -619,9 +614,9 @@ export class AtomicOperation<
    * Once the specified duration has passed, the key may still be visible for some additional time.
    * If the expireIn option is not specified, the key will not expire.
    */
-  set<K extends Readonly<E["key"]>>(
+  set<K extends E["key"]>(
     key: K,
-    value: _KvWithKey<E, K>["value"],
+    value: ValueForTuple<E, K>,
     { expireIn }: { expireIn?: number } = {}
   ): this {
     this.#mutations.push({
@@ -634,15 +629,15 @@ export class AtomicOperation<
   }
 
   /** Add to the operation a mutation that deletes the specified key if all checks pass during the commit. */
-  delete<K extends Readonly<E["key"]>>(key: K): this {
+  delete<K extends E["key"]>(key: K): this {
     this.#mutations.push({ key, type: MutationType.DELETE });
     return this;
   }
 
   /** Add to the operation a mutation that enqueues a value into the queue if all checks pass during the commit. */
-  enqueue<K extends Readonly<Q["key"]>>(
+  enqueue<K extends Q["key"]>(
     key: K,
-    value: _KvWithKey<Q, K>["value"],
+    value: ValueForTuple<Q, K>,
     {
       delay = 0,
       schedule = delay === 0 ? undefined : Date.now() + delay,
@@ -657,9 +652,7 @@ export class AtomicOperation<
   }
 
   /** Add to the operation a mutation that dequeues a value from the queue if all checks pass during the commit. */
-  dequeue(
-    ...keys: { key: Readonly<Q["key"]>; schedule: number; sequence: bigint }[]
-  ) {
+  dequeue(...keys: { key: Q["key"]; schedule: number; sequence: bigint }[]) {
     this.#dequeues.push(...keys);
     return this;
   }
