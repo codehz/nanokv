@@ -12,7 +12,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
       - run: bun install
         working-directory: ./npm/nanokv
-      - run: bun x typedoc index.ts --out ../docs
+      - run: bun x typedoc index.ts type_helpers.ts --out ../docs
         working-directory: ./npm/nanokv
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

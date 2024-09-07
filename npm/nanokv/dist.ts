@@ -1,6 +1,6 @@
 import dts from "bun-plugin-dts";
 
-await Bun.$`rm -rf ../dist/*`;
+await Bun.$`rm -rf ../dist/*`.catch(() => {});
 
 const { success, logs } = await Bun.build({
   target: "bun",

@@ -93,10 +93,25 @@ class ListenState {
  *
  * Values can be any JavaScript object that is {@link https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Structured_clone_algorithm structured-serializable}, such as objects, arrays, strings, or numbers.
  *
- *
  * Each key is versioned upon writing by assigning it an ever-increasing "versionstamp".
  * This versionstamp signifies the versionstamp of the key-value pair at a specific moment and facilitates transactional operations on the database without the need for locks.
  * Atomic operations, which can include conditions to check against the expected versionstamp, ensure that the operation only completes if the versionstamp matches the anticipated value.
+ *
+ * The NanoKV database also provides a lightweight message queue feature.
+ * Please note: Although the API names are similar to those of denokv,
+ * there are significant differences in their behaviors.
+ * For instance, denokv's message delivery is more inclined towards real-time processing,
+ * and thus denokv will attempt to redeliver to the consumer within a specific time frame
+ * (with settings for the number of retries and frequency).
+ * In contrast, NanoKV leans more towards the essence of a "queue",
+ * where consumers can retrieve outdated messages from the queue (if not manually {@link AtomicOperation.dequeue dequeued}),
+ * as well as receive new messages in real-time.
+ *
+ * Additionally, NanoKV supports the existence of multiple queues simultaneously.
+ * Different parts of an application (such as various microservices) can listen only to the queues they are interested in,
+ * whereas denokv can only have a single global queue (for a denokv instance).
+ * This is also a significant difference.
+ *
  * @template E KvEntry type
  * @template Q KvQueueEntry type
  * @example
@@ -488,9 +503,10 @@ export class NanoKV<
 
   /**
    * Listen for queue values to be delivered from the database queue,
-   * which were enqueued with {@link AtomicOperation.enqueue}.
-   * The provided handler callback is invoked on every dequeued value.
-   * A failed callback invocation is automatically retried multiple times until it succeeds or until the maximum number of retries is reached.
+   * which were enqueued with {@link AtomicOperation.enqueue}, you can spcify which keys to listen to.
+   *
+   * You need to use {@link AtomicOperation.dequeue} to dequeue values from the queue after you have received and processed them,
+   * or you will get duplicates in next time you call this method.
    *
    * @param {...const Ks extends Q["key"][]} keys - The keys to listen to.
    * @return {ReadableStream<{ [N in keyof Ks]: _KvWithKey<Q, Ks[N]> }[keyof Ks & number]>} A readable stream of key-value pairs.

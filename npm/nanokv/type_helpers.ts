@@ -1,9 +1,17 @@
+/**
+ * This file contains type helpers for the NanoKV library.
+ *
+ * Note: This module was not exported from the library.
+ * This docs exists purely for documentation purposes.
+ * @module
+ */
+
 import type { KvPair, KvKey } from "./types";
 
-type Ints = `${number}`;
+export type Ints = `${number}`;
 
 /** Convert ["a", "b"] in {0: "a", 1: "b"} so that we can use Extract to match tuple prefixes. */
-type TupleToObject<T extends any[]> = Pick<T, Extract<keyof T, Ints>>;
+export type TupleToObject<T extends any[]> = Pick<T, Extract<keyof T, Ints>>;
 
 export type FilterTupleByPrefix<S extends KvKey, P extends KvKey> = Extract<
   S,
@@ -29,7 +37,7 @@ export type ValueForTuple<S extends KvPair, P extends KvKey> = DistributiveProp<
   "value"
 >;
 
-type IsTuple = [] | { 0: any };
+export type IsTuple = [] | { 0: any };
 
 export type TuplePrefix<T extends unknown[]> = T extends IsTuple
   ? T extends [any, ...infer U]
