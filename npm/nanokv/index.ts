@@ -43,6 +43,10 @@ export { type ProtocolEncoding } from "./protocol";
 export type { AtomicOperation } from "./atomic";
 export * from "./types";
 
+export type KvSubspace<P extends KvKey, T extends KvPair> = T extends unknown
+  ? { key: [...P, ...T["key"]]; value: T["value"] } & Omit<T, "key" | "value">
+  : never;
+
 const START = new Uint8Array([0x00]);
 const END = new Uint8Array([0xff]);
 

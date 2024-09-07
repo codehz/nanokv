@@ -1,5 +1,4 @@
-import { NanoKV, type KvEntry, type KvQueueEntry } from ".";
-import type { KvSubspace } from "./type_helpers";
+import { NanoKV, type KvEntry, type KvQueueEntry, type KvSubspace } from ".";
 
 const kv = new NanoKV<
   KvSubspace<["test"], KvEntry<[number], string>>,

@@ -1,5 +1,5 @@
 import { NanoKV } from ".";
-import type { KvSubspace } from "./type_helpers";
+import type { KvSubspace } from ".";
 import type { KvEntry } from "./types";
 
 type KVType = KvSubspace<

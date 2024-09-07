@@ -60,7 +60,3 @@ export type RemoveKvPairPrefix<T extends KvPair, P extends KvKey> = T extends {
 }
   ? { key: U; value: V } & Omit<T, "key" | "value">
   : never;
-
-export type KvSubspace<P extends KvKey, T extends KvPair> = T extends unknown
-  ? { key: [...P, ...T["key"]]; value: T["value"] } & Omit<T, "key" | "value">
-  : never;
