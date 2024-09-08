@@ -636,17 +636,23 @@ class SubspaceProxy<
     this.#parent = parent;
     this.#prefix = prefix;
   }
-  get<K extends E["key"]>(
+  async get<K extends E["key"]>(
     key: K
   ): Promise<KvPairMaybe<Extract<E, { key: K }>>> {
-    return this.#parent.get([...this.#prefix, ...key]) as any;
+    const raw = await this.#parent.get([...this.#prefix, ...key]);
+    return { ...raw, key } as any;
   }
   getMany<Ks extends [] | E["key"][]>(
     keys: Ks
   ): Promise<{ [N in keyof Ks]: KvPairMaybe<Extract<E, { key: Ks[N] }>> }> {
-    return this.#parent.getMany(
-      keys.map((key) => [...this.#prefix, ...key])
-    ) as any;
+    return (
+      this.#parent.getMany(
+        keys.map((key) => [...this.#prefix, ...key])
+      ) as unknown as KvEntryMaybe[]
+    ).map((entry) => {
+      const { key, ...rest } = entry;
+      return { key: key.slice(this.#prefix.length), ...rest } as any;
+    }) as any;
   }
   set<K extends E["key"]>(
     key: K,
@@ -662,12 +668,24 @@ class SubspaceProxy<
     selector: KvListSelector<K, P>,
     options?: KvListOptions
   ): ReadableStream<Extract<E, { key: KvKeyToObject<P> }>> {
-    return this.#parent.list(
-      Object.fromEntries(
-        Object.entries(selector).map(([k, v]) => [k, [...this.#prefix, ...v]])
-      ) as any,
-      options
-    ) as any;
+    return this.#parent
+      .list(
+        Object.fromEntries(
+          Object.entries(selector).map(([k, v]) => [k, [...this.#prefix, ...v]])
+        ) as any,
+        options
+      )
+      .pipeThrough(
+        new TransformStream<KvEntry, Extract<E, { key: KvKeyToObject<P> }>>({
+          transform: (entry, controller) => {
+            const { key, ...rest } = entry;
+            controller.enqueue({
+              key: key.slice(this.#prefix.length),
+              ...rest,
+            } as any);
+          },
+        })
+      );
   }
   atomic(): AtomicOperation<E, Q> {
     return new AtomicOperationProxy(this.#parent.atomic(), this.#prefix);
@@ -677,16 +695,45 @@ class SubspaceProxy<
   ): ReadableStream<{
     [N in keyof Ks]: KvPairMaybe<Extract<E, { key: Ks[N] }>>;
   }> {
-    return this.#parent.watch(
-      keys.map((key) => [...this.#prefix, ...key])
-    ) as any;
+    return this.#parent
+      .watch(keys.map((key) => [...this.#prefix, ...key]))
+      .pipeThrough(
+        new TransformStream<
+          KvEntry[],
+          {
+            [N in keyof Ks]: KvPairMaybe<Extract<E, { key: Ks[N] }>>;
+          }
+        >({
+          transform: (entries, controller) => {
+            controller.enqueue(
+              entries.map((entry) => {
+                const { key, ...rest } = entry;
+                return { key: key.slice(this.#prefix.length), ...rest } as any;
+              }) as any
+            );
+          },
+        })
+      );
   }
   listenQueue<Ks extends [] | Q["key"][]>(
     ...keys: Ks
   ): ReadableStream<{ [N in keyof Ks]: Extract<Q, { key: Ks[N] }> }[keyof Ks]> {
-    return this.#parent.listenQueue(
-      ...keys.map((key) => [...this.#prefix, ...key])
-    ) as any;
+    return this.#parent
+      .listenQueue(...keys.map((key) => [...this.#prefix, ...key]))
+      .pipeThrough(
+        new TransformStream<
+          KvQueueEntry,
+          { [N in keyof Ks]: Extract<Q, { key: Ks[N] }> }[keyof Ks]
+        >({
+          transform: (entry, controller) => {
+            const { key, ...rest } = entry;
+            controller.enqueue({
+              key: key.slice(this.#prefix.length),
+              ...rest,
+            } as any);
+          },
+        })
+      );
   }
   subspace<P extends KvKeyPrefix<E["key"]> & KvKeyPrefix<Q["key"]>>(
     prefix: P
