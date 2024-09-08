@@ -195,14 +195,14 @@ export interface KvApi<
    * or you will get duplicates in next time you call this method.
    *
    * @param {...const Ks extends Q["key"][]} keys - The keys to listen to.
-   * @return {ReadableStream<{ [N in keyof Ks]: _KvWithKey<Q, Ks[N]> }[keyof Ks]>} A readable stream of key-value pairs.
+   * @return A readable stream of key-value pairs.
    */
   listenQueue<Ks extends Q["key"][] | []>(
     ...keys: Ks
   ): ReadableStream<
     {
       [N in keyof Ks]: SelectKvPair<Q, Ks[N]>;
-    }[keyof Ks]
+    }[keyof Ks & number]
   >;
 
   /** Get a subspace of the database, operating on all key with the given prefix. */
@@ -717,7 +717,9 @@ class SubspaceProxy<
   }
   listenQueue<Ks extends [] | Q["key"][]>(
     ...keys: Ks
-  ): ReadableStream<{ [N in keyof Ks]: Extract<Q, { key: Ks[N] }> }[keyof Ks]> {
+  ): ReadableStream<
+    { [N in keyof Ks]: Extract<Q, { key: Ks[N] }> }[keyof Ks & number]
+  > {
     return this.#parent
       .listenQueue(...keys.map((key) => [...this.#prefix, ...key]))
       .pipeThrough(
