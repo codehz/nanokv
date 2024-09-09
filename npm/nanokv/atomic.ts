@@ -216,7 +216,7 @@ export class AtomicOperationProxy<E extends KvEntry, Q extends KvQueueEntry>
   }
   set<K extends E["key"]>(
     key: K,
-    value: DistributiveProp<Extract<E, { key: KvKeyToObject<K> }>, "value">,
+    value: ValueFotKvPair<E, K>,
     options?: { expireIn?: number }
   ): this {
     this.#operation.set([...this.#prefix, ...key], value, options);
@@ -228,7 +228,7 @@ export class AtomicOperationProxy<E extends KvEntry, Q extends KvQueueEntry>
   }
   enqueue<K extends Q["key"]>(
     key: K,
-    value: DistributiveProp<Extract<Q, { key: KvKeyToObject<K> }>, "value">,
+    value: ValueFotKvPair<Q, K>,
     options?: { delay?: number; schedule?: number }
   ): this {
     this.#operation.enqueue([...this.#prefix, ...key], value, options);

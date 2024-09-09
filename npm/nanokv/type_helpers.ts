@@ -6,7 +6,7 @@
  * @module
  */
 
-import type { KvPair, KvKey } from "./types";
+import type { KvKey, KvPair } from "./types";
 
 export type Ints = `${number}`;
 
@@ -35,7 +35,7 @@ export type DistributiveProp<T, K extends keyof T> = T extends unknown
 export type ValueFotKvPair<
   S extends KvPair,
   P extends KvKey
-> = DistributiveProp<SelectKvPairByPrefix<S, P>, "value">;
+> = DistributiveProp<SelectKvPair<S, P>, "value">;
 
 export type IsTuple = [] | { 0: any };
 
