@@ -18,9 +18,7 @@ import {
 } from "./protocol";
 import { Reactor } from "./reactor";
 import type {
-  DistributiveProp,
   KvKeyPrefix,
-  KvKeyToObject,
   RemoveKvPairPrefix,
   SelectKvPair,
   SelectKvPairByPrefix,
@@ -551,13 +549,12 @@ export class NanoKV<
               packeds.push(packed);
             }
           }
-          if (packeds.length) {
+          if (this.#subscriptions.size === 0) {
+            this.#watch.close();
+          } else if (packeds.length) {
             this.#watch.trySend(() =>
               this.#protocol.encodeWatch({ id: 0, keys: packeds })
             );
-          }
-          if (this.#subscriptions.size === 0) {
-            this.#watch.close();
           }
         },
       },
@@ -605,13 +602,12 @@ export class NanoKV<
           for (const [key] of cached) {
             this.#queues.delete(key);
           }
-          if (packeds.length) {
+          if (this.#queues.size === 0) {
+            this.#listen.close();
+          } else if (packeds.length) {
             this.#watch.trySend(() =>
               this.#protocol.encodeListen({ removed: packeds })
             );
-          }
-          if (this.#queues.size === 0) {
-            this.#listen.close();
           }
         },
       },
