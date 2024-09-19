@@ -10,28 +10,25 @@ async function watch(signal: AbortSignal) {
     ["test", 1],
     ["test", 2],
   ]);
-  const reader = watcher.getReader();
   signal.addEventListener("abort", () => {
-    reader.cancel();
+    watcher.close();
   });
   (async () => {
     while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+      const value = await watcher.read();
       console.log("update", value);
     }
-  })();
+  })().catch(() => {});
 }
 
 async function listen(signal: AbortSignal) {
-  const reader = kv.listenQueue(["test-queue"]).getReader();
+  const watcher = kv.listenQueue(["test-queue"]);
   signal.addEventListener("abort", () => {
-    reader.cancel();
+    watcher.close();
   });
   (async () => {
     while (true) {
-      const { done, value } = await reader.readMany();
-      if (done) break;
+      const value = await watcher.readMany();
       console.log("listen", value);
       await kv
         .atomic()

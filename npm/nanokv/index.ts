@@ -5,6 +5,7 @@ import {
   AtomicOperationProxy,
 } from "./atomic";
 import { packKey, unpackKey } from "./kv_key";
+import { NanoStream } from "./nanostream";
 import { MutationType } from "./packet";
 import {
   Protocol,
@@ -39,6 +40,7 @@ import { WebSocketConnection } from "./ws";
 export { type ProtocolEncoding } from "./protocol";
 
 export type { AtomicOperation } from "./atomic";
+export type * from "./nanostream";
 export * from "./types";
 
 export type KvSubspace<P extends KvKey, T extends KvPair> = T extends unknown
@@ -139,7 +141,7 @@ export interface KvApi<
   delete(key: E["key"]): Promise<KvCommitResult | KvCommitError>;
   /**
    * Retrieve a list of keys in the database.
-   * The returned list is a ReadableStream which can be used to iterate over the entries in the database.
+   * The returned list is a NanoStream which can be used to iterate over the entries in the database.
    * Each list operation must specify a selector which is used to specify the range of keys to return.
    * The selector can either be a prefix selector, or a range selector:
    * * A prefix selector selects all keys that start with the given prefix of key parts.
@@ -158,7 +160,7 @@ export interface KvApi<
   list<K extends E["key"], P extends KvKeyPrefix<K>>(
     selector: KvListSelector<K, P>,
     options?: KvListOptions
-  ): ReadableStream<SelectKvPairByPrefix<E, P>>;
+  ): NanoStream<SelectKvPairByPrefix<E, P>>;
   /**
    * Create a new {@link AtomicOperation} object which can be used to perform an atomic transaction on the database.
    * This does not perform any operations on the database -
@@ -167,7 +169,7 @@ export interface KvApi<
   atomic(): AtomicOperation<E, Q>;
   /**
    * Watch for changes to the given keys in the database.
-   * The returned stream is a ReadableStream that emits a new value whenever any of the watched keys change their versionstamp.
+   * The returned stream is a NanoStream that emits a new value whenever any of the watched keys change their versionstamp.
    * The emitted value is an array of KvEntryMaybe objects,
    * with the same length and order as the keys array.
    * If no value exists for a given key, the returned entry will have a null value and versionstamp.
@@ -182,7 +184,7 @@ export interface KvApi<
    */
   watch<Ks extends E["key"][] | []>(
     keys: Ks
-  ): ReadableStream<{
+  ): NanoStream<{
     [N in keyof Ks]: KvPairMaybe<SelectKvPair<E, Ks[N]>>;
   }>;
   /**
@@ -197,7 +199,7 @@ export interface KvApi<
    */
   listenQueue<Ks extends Q["key"][] | []>(
     ...keys: Ks
-  ): ReadableStream<
+  ): NanoStream<
     {
       [N in keyof Ks]: SelectKvPair<Q, Ks[N]>;
     }[keyof Ks & number]
@@ -443,7 +445,7 @@ export class NanoKV<
   list<K extends E["key"], P extends KvKeyPrefix<K>>(
     selector: KvListSelector<K, P>,
     options: KvListOptions = {}
-  ): ReadableStream<SelectKvPairByPrefix<E, P>> {
+  ): NanoStream<SelectKvPairByPrefix<E, P>> {
     let { limit = 500, reverse = false, batchSize = 128, cursor } = options;
     const base =
       "prefix" in selector
@@ -456,33 +458,30 @@ export class NanoKV<
     if (batchSize <= 0 || batchSize >= 1024 || !Number.isFinite(batchSize)) {
       batchSize = 1024;
     }
-    return new ReadableStream<SelectKvPairByPrefix<E, P>>(
-      {
-        pull: async (controller) => {
-          const [values] = await this.#snapshot_read([
-            {
-              ...base,
-              ...(cursor
-                ? reverse
-                  ? { end: cursor }
-                  : { start: Buffer.concat([packKey(cursor), START]) }
-                : undefined),
-              reverse,
-              limit: Math.min(limit, batchSize),
-              exact: false,
-            },
-          ]);
-          for (const item of values) controller.enqueue(item as any);
-          if (values.length == batchSize && limit > batchSize) {
-            cursor = values[values.length - 1].key;
-            limit -= batchSize;
-          } else {
-            controller.close();
-          }
-        },
+    return new NanoStream<SelectKvPairByPrefix<E, P>>({
+      pull: async (controller) => {
+        const [values] = await this.#snapshot_read([
+          {
+            ...base,
+            ...(cursor
+              ? reverse
+                ? { end: cursor }
+                : { start: Buffer.concat([packKey(cursor), START]) }
+              : undefined),
+            reverse,
+            limit: Math.min(limit, batchSize),
+            exact: false,
+          },
+        ]);
+        for (const item of values) controller.enqueue(item as any);
+        if (values.length == batchSize && limit > batchSize) {
+          cursor = values[values.length - 1].key;
+          limit -= batchSize;
+        } else {
+          controller.close();
+        }
       },
-      { highWaterMark: batchSize }
-    );
+    });
   }
 
   atomic(): AtomicOperation<E, Q> {
@@ -498,73 +497,70 @@ export class NanoKV<
 
   watch<Ks extends E["key"][] | []>(
     keys: Ks
-  ): ReadableStream<{
+  ): NanoStream<{
     [N in keyof Ks]: KvPairMaybe<SelectKvPair<E, Ks[N]>>;
   }> {
     const reactor = new Reactor<void>();
     const cached = new Map<string, Uint8Array>();
     const id = this.#genWatchId();
     this.#firstWatch.set(id, reactor);
-    return new ReadableStream<{
+    return new NanoStream<{
       [N in keyof Ks]: KvPairMaybe<SelectKvPair<E, Ks[N]>>;
-    }>(
-      {
-        start: () => {
-          const packeds: Uint8Array[] = [];
-          for (const key of keys) {
-            const packed = packKey(key as KvKey);
-            packeds.push(packed);
-            const stringified = Buffer.from(packed).toString("base64");
-            cached.set(stringified, packed);
-            const state = this.#subscriptions.get(stringified);
-            if (state) {
-              state.addReactor(reactor);
-            } else {
-              this.#subscriptions.set(
-                stringified,
-                new WatchState(key as KvKey, packed, reactor)
-              );
-            }
-          }
-          this.#watch.open();
-          this.#watch.trySend(() =>
-            this.#protocol.encodeWatch({ id, keys: packeds })
-          );
-        },
-        pull: async (controller) => {
-          await reactor;
-          const snapshot = [];
-          for (const key of cached.keys()) {
-            const entry = this.#subscriptions.get(key)!.entry;
-            snapshot.push(entry);
-          }
-          controller.enqueue(snapshot as any);
-        },
-        cancel: () => {
-          this.#firstWatch.delete(id);
-          const packeds: Uint8Array[] = [];
-          for (const [key, packed] of cached) {
-            if (this.#subscriptions.get(key)!.removeReactor(reactor)) {
-              this.#subscriptions.delete(key);
-              packeds.push(packed);
-            }
-          }
-          if (this.#subscriptions.size === 0) {
-            this.#watch.close();
-          } else if (packeds.length) {
-            this.#watch.trySend(() =>
-              this.#protocol.encodeWatch({ id: 0, keys: packeds })
+    }>({
+      start: () => {
+        const packeds: Uint8Array[] = [];
+        for (const key of keys) {
+          const packed = packKey(key as KvKey);
+          packeds.push(packed);
+          const stringified = Buffer.from(packed).toString("base64");
+          cached.set(stringified, packed);
+          const state = this.#subscriptions.get(stringified);
+          if (state) {
+            state.addReactor(reactor);
+          } else {
+            this.#subscriptions.set(
+              stringified,
+              new WatchState(key as KvKey, packed, reactor)
             );
           }
-        },
+        }
+        this.#watch.open();
+        this.#watch.trySend(() =>
+          this.#protocol.encodeWatch({ id, keys: packeds })
+        );
       },
-      { highWaterMark: 0 }
-    );
+      pull: async (controller) => {
+        await reactor;
+        const snapshot = [];
+        for (const key of cached.keys()) {
+          const entry = this.#subscriptions.get(key)!.entry;
+          snapshot.push(entry);
+        }
+        controller.enqueue(snapshot as any);
+      },
+      cancel: () => {
+        this.#firstWatch.delete(id);
+        const packeds: Uint8Array[] = [];
+        for (const [key, packed] of cached) {
+          if (this.#subscriptions.get(key)!.removeReactor(reactor)) {
+            this.#subscriptions.delete(key);
+            packeds.push(packed);
+          }
+        }
+        if (this.#subscriptions.size === 0) {
+          this.#watch.close();
+        } else if (packeds.length) {
+          this.#watch.trySend(() =>
+            this.#protocol.encodeWatch({ id: 0, keys: packeds })
+          );
+        }
+      },
+    });
   }
 
   listenQueue<Ks extends Q["key"][] | []>(
     ...keys: Ks
-  ): ReadableStream<
+  ): NanoStream<
     {
       [N in keyof Ks & number]: SelectKvPair<Q, Ks[N]>;
     }[keyof Ks & number]
@@ -572,47 +568,44 @@ export class NanoKV<
     const state = new ListenState();
     const cached = new Map<string, Uint8Array>();
     const packeds: Uint8Array[] = [];
-    return new ReadableStream<
+    return new NanoStream<
       {
         [N in keyof Ks & number]: SelectKvPair<Q, Ks[N]>;
       }[keyof Ks & number]
-    >(
-      {
-        start: () => {
-          for (const key of keys) {
-            const packed = packKey(key as KvKey);
-            packeds.push(packed);
-            const stringified = Buffer.from(packed).toString("base64");
-            cached.set(stringified, packed);
-            if (this.#queues.has(stringified)) {
-              throw new Error("cannot listen to an already listened queue");
-            }
-            this.#queues.set(stringified, state);
+    >({
+      start: () => {
+        for (const key of keys) {
+          const packed = packKey(key as KvKey);
+          packeds.push(packed);
+          const stringified = Buffer.from(packed).toString("base64");
+          cached.set(stringified, packed);
+          if (this.#queues.has(stringified)) {
+            throw new Error("cannot listen to an already listened queue");
           }
-          this.#listen.open();
-          this.#listen.trySend(() =>
-            this.#protocol.encodeListen({ added: packeds })
-          );
-        },
-        pull: async (controller) => {
-          await state.reactor;
-          for (const item of state.take()) controller.enqueue(item as any);
-        },
-        cancel: () => {
-          for (const [key] of cached) {
-            this.#queues.delete(key);
-          }
-          if (this.#queues.size === 0) {
-            this.#listen.close();
-          } else if (packeds.length) {
-            this.#watch.trySend(() =>
-              this.#protocol.encodeListen({ removed: packeds })
-            );
-          }
-        },
+          this.#queues.set(stringified, state);
+        }
+        this.#listen.open();
+        this.#listen.trySend(() =>
+          this.#protocol.encodeListen({ added: packeds })
+        );
       },
-      { highWaterMark: 0 }
-    );
+      pull: async (controller) => {
+        await state.reactor;
+        for (const item of state.take()) controller.enqueue(item as any);
+      },
+      cancel: () => {
+        for (const [key] of cached) {
+          this.#queues.delete(key);
+        }
+        if (this.#queues.size === 0) {
+          this.#listen.close();
+        } else if (packeds.length) {
+          this.#watch.trySend(() =>
+            this.#protocol.encodeListen({ removed: packeds })
+          );
+        }
+      },
+    });
   }
   subspace<P extends KvKeyPrefix<E["key"]> & KvKeyPrefix<Q["key"]>>(
     prefix: P
@@ -663,7 +656,7 @@ class SubspaceProxy<
   list<K extends E["key"], P extends KvKeyPrefix<K>>(
     selector: KvListSelector<K, P>,
     options?: KvListOptions
-  ): ReadableStream<SelectKvPairByPrefix<E, P>> {
+  ): NanoStream<SelectKvPairByPrefix<E, P>> {
     return this.#parent
       .list(
         Object.fromEntries(
@@ -671,67 +664,50 @@ class SubspaceProxy<
         ) as any,
         options
       )
-      .pipeThrough(
-        new TransformStream<KvEntry, SelectKvPairByPrefix<E, P>>({
-          transform: (entry, controller) => {
-            const { key, ...rest } = entry;
-            controller.enqueue({
-              key: key.slice(this.#prefix.length),
-              ...rest,
-            } as any);
-          },
-        })
-      );
+      .transform<SelectKvPairByPrefix<E, P>>((entry) => {
+        const { key, ...rest } = entry;
+        return {
+          key: key.slice(this.#prefix.length),
+          ...rest,
+        } as any;
+      });
   }
   atomic(): AtomicOperation<E, Q> {
     return new AtomicOperationProxy(this.#parent.atomic(), this.#prefix);
   }
   watch<Ks extends E["key"][] | []>(
     keys: Ks
-  ): ReadableStream<{
+  ): NanoStream<{
     [N in keyof Ks]: KvPairMaybe<SelectKvPair<E, Ks[N]>>;
   }> {
     return this.#parent
       .watch(keys.map((key) => [...this.#prefix, ...key]))
-      .pipeThrough(
-        new TransformStream<
-          KvEntry[],
-          {
-            [N in keyof Ks]: KvPairMaybe<SelectKvPair<E, Ks[N]>>;
-          }
-        >({
-          transform: (entries, controller) => {
-            controller.enqueue(
-              entries.map((entry) => {
-                const { key, ...rest } = entry;
-                return { key: key.slice(this.#prefix.length), ...rest } as any;
-              }) as any
-            );
-          },
-        })
+      .transform<{
+        [N in keyof Ks]: KvPairMaybe<SelectKvPair<E, Ks[N]>>;
+      }>(
+        (entries) =>
+          entries.map((entry) => {
+            const { key, ...rest } = entry;
+            return { key: key.slice(this.#prefix.length), ...rest } as any;
+          }) as any
       );
   }
   listenQueue<Ks extends [] | Q["key"][]>(
     ...keys: Ks
-  ): ReadableStream<
+  ): NanoStream<
     { [N in keyof Ks]: SelectKvPair<Q, Ks[N]> }[keyof Ks & number]
   > {
     return this.#parent
       .listenQueue(...keys.map((key) => [...this.#prefix, ...key]))
-      .pipeThrough(
-        new TransformStream<
-          KvQueueEntry,
-          { [N in keyof Ks]: SelectKvPair<Q, Ks[N]> }[keyof Ks]
-        >({
-          transform: (entry, controller) => {
-            const { key, ...rest } = entry;
-            controller.enqueue({
-              key: key.slice(this.#prefix.length),
-              ...rest,
-            } as any);
-          },
-        })
-      );
+      .transform<
+        { [N in keyof Ks]: SelectKvPair<Q, Ks[N]> }[keyof Ks & number]
+      >((entry) => {
+        const { key, ...rest } = entry;
+        return {
+          key: key.slice(this.#prefix.length),
+          ...rest,
+        } as any;
+      });
   }
   subspace<P extends KvKeyPrefix<E["key"]> & KvKeyPrefix<Q["key"]>>(
     prefix: P
