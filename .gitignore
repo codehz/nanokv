@@ -2,6 +2,7 @@ build
 .xmake
 db
 .vscode
+.cache
 compile_commands.json
 npm/dist
 npm/docs

@@ -2,7 +2,6 @@
 #include <spdlog/spdlog.h>
 
 #include <argz/argz.hpp>
-#include <optional>
 
 #include "core.h"
 
