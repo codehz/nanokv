@@ -65,6 +65,8 @@ export class NanoStream<T> implements AsyncIterableIterator<T> {
   close() {
     if (this.#closed) return;
     this.#closed = true;
+    this.#promise?.resolve();
+    this.#promise = undefined;
     this.#source.cancel?.();
   }
   #tryPull() {
