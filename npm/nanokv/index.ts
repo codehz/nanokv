@@ -642,13 +642,13 @@ class SubspaceProxy<
     const raw = await this.#parent.get([...this.#prefix, ...key]);
     return { ...raw, key } as any;
   }
-  getMany<Ks extends [] | E["key"][]>(
+  async getMany<Ks extends [] | E["key"][]>(
     keys: Ks
   ): Promise<{ [N in keyof Ks]: KvPairMaybe<SelectKvPair<E, Ks[N]>> }> {
     return (
-      this.#parent.getMany(
+      (await this.#parent.getMany(
         keys.map((key) => [...this.#prefix, ...key])
-      ) as unknown as KvEntryMaybe[]
+      )) as unknown as KvEntryMaybe[]
     ).map((entry) => {
       const { key, ...rest } = entry;
       return { key: key.slice(this.#prefix.length), ...rest } as any;
