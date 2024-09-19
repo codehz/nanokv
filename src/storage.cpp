@@ -423,12 +423,14 @@ void Storage::cleanup_expired(UpdateMap &updates, uint64_t &next) {
 
   for (it->Seek(EXPIRES_BASE_KEY); it->Valid() && it->key().starts_with(EXPIRES_BASE_KEY); it->Next()) {
     if (it->key().size() <= 10) {
+      spdlog::warn("expire due to invalid key size {}", it->key().size());
       batch.Delete(it->key());
       count++;
       continue;
     }
     uint64_t expired_at = readExpiresKey(it->key());
     if (expired_at <= timestamp) {
+      spdlog::warn("expired {} timestamp {}", expired_at, timestamp);
       batch.Delete(it->key());
       leveldb::Slice target{it->key().data() + 10, it->key().size() - 10};
       batch.Delete(target);
