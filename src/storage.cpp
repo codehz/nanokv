@@ -324,10 +324,10 @@ Offset<packet::AtomicWriteOutput> Storage::atomic_write(FlatBufferBuilder &build
       _CHECK_FIELD(mutation, key, Mutation);
       auto key = ToSlice(*mutation->key());
       if (key[0] == 0) goto check_fail;
+      std::string buffer;
+      status = db->Get(snapshot.options, key, &buffer);
       if (mutation->type() == packet::MutationType_DELETE) {
       early_delete:
-        std::string buffer;
-        status = db->Get(snapshot.options, key, &buffer);
         if (status.IsNotFound()) {
           continue;
         }
@@ -337,6 +337,12 @@ Offset<packet::AtomicWriteOutput> Storage::atomic_write(FlatBufferBuilder &build
         updates[ToString(key)] = std::nullopt;
       } else if (mutation->type() == packet::MutationType_SET) {
         _CHECK_FIELD(mutation, value, Mutation);
+        if (status.ok()) {
+          auto prev_expired_at = flatbuffers::GetRoot<internal::ValueHolder>(buffer.data())->expired_at();
+          if (prev_expired_at > 0) {
+            batch.Delete(createExpiresKey(prev_expired_at, key));
+          }
+        }
         if (mutation->expired_at() > 0) {
           if (timestamp > mutation->expired_at()) goto early_delete;
           batch.Put(createExpiresKey(mutation->expired_at(), key), {});
@@ -423,14 +429,12 @@ void Storage::cleanup_expired(UpdateMap &updates, uint64_t &next) {
 
   for (it->Seek(EXPIRES_BASE_KEY); it->Valid() && it->key().starts_with(EXPIRES_BASE_KEY); it->Next()) {
     if (it->key().size() <= 10) {
-      spdlog::warn("expire due to invalid key size {}", it->key().size());
       batch.Delete(it->key());
       count++;
       continue;
     }
     uint64_t expired_at = readExpiresKey(it->key());
     if (expired_at <= timestamp) {
-      spdlog::warn("expired {} timestamp {}", expired_at, timestamp);
       batch.Delete(it->key());
       leveldb::Slice target{it->key().data() + 10, it->key().size() - 10};
       batch.Delete(target);
