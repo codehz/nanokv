@@ -10,6 +10,12 @@ export interface NanoStreamSource<T> {
   cancel?(): void;
 }
 
+export class NanoStreamClosedError extends Error {
+  constructor() {
+    super("stream closed");
+  }
+}
+
 export class NanoStream<T> implements AsyncIterableIterator<T> {
   #closed = false;
   #buffer: T[] = [];
@@ -92,7 +98,7 @@ export class NanoStream<T> implements AsyncIterableIterator<T> {
       if (this.#buffer.length) {
         return this.#buffer.splice(0, 1)[0];
       }
-      if (this.#closed) throw new Error("stream closed");
+      if (this.#closed) throw new NanoStreamClosedError();
       this.#promise ??= Promise.withResolvers();
       this.#tryPull();
       await this.#promise.promise;
@@ -103,7 +109,7 @@ export class NanoStream<T> implements AsyncIterableIterator<T> {
       if (this.#buffer.length) {
         return this.#buffer.splice(0);
       }
-      if (this.#closed) throw new Error("stream closed");
+      if (this.#closed) throw new NanoStreamClosedError();
       this.#promise ??= Promise.withResolvers();
       this.#tryPull();
       await this.#promise.promise;
