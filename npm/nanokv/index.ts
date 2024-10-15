@@ -323,8 +323,8 @@ export class NanoKV<
         if (reason) {
           console.error(reason);
         }
-        const added = [...this.#queues.keys()].map((key) =>
-          Buffer.from(key, "base64")
+        const added = [...this.#queues.keys()].map(
+          (key) => Buffer.from(key, "base64") as unknown as Uint8Array
         );
         send(this.#protocol.encodeListen({ added }));
       },
@@ -473,7 +473,7 @@ export class NanoKV<
             exact: false,
           },
         ]);
-        for (const item of values) controller.enqueue(item as any);
+        controller.enqueueChunk(values as any);
         if (values.length == batchSize && limit > batchSize) {
           cursor = values[values.length - 1].key;
           limit -= batchSize;
@@ -591,7 +591,7 @@ export class NanoKV<
       },
       pull: async (controller) => {
         await state.reactor;
-        for (const item of state.take()) controller.enqueue(item as any);
+        controller.enqueueChunk(state.take() as any);
       },
       cancel: () => {
         for (const [key] of cached) {

@@ -18,12 +18,10 @@
     "nanokv"
   ],
   "devDependencies": {
-    "@types/bun": "^1.1.8",
-    "bun-plugin-dts": "^0.2.3",
-    "typedoc": "^0.26.6"
-  },
-  "peerDependencies": {
-    "typescript": "^5.0.0"
+    "@types/bun": "^1.1.11",
+    "bun-plugin-dts": "^0.3.0",
+    "typedoc": "^0.26.9",
+    "typescript": "^5.6.3"
   },
   "dependencies": {
     "flatbuffers": "^24.3.25"
