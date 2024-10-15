@@ -1,8 +1,8 @@
 #pragma once
 
-#include <concepts>
 #include <cstring>
 #include <type_traits>
+#include <memory>
 
 template <typename T, void (*deleter)(T *loop)>
 struct craii {

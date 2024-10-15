@@ -1,5 +1,6 @@
 #pragma once
 #include <stdexcept>
+#include <string>
 
 namespace nanokv {
 using namespace std::string_literals;
