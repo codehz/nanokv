@@ -41,6 +41,7 @@ export { type ProtocolEncoding } from "./protocol";
 
 export type { AtomicOperation } from "./atomic";
 export type * from "./nanostream";
+export { NanoStreamClosedError } from "./nanostream";
 export * from "./types";
 
 export type KvSubspace<P extends KvKey, T extends KvPair> = T extends unknown
