@@ -35,7 +35,7 @@ async function listen(signal: AbortSignal) {
         .dequeue(...value)
         .commit();
     }
-  })();
+  })().catch(() => {});
 }
 
 async function read() {
