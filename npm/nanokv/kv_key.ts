@@ -1,6 +1,5 @@
 // Copyright 2023 the Deno authors. All rights reserved. MIT license.
 
-import { ArrayBufferSink } from "bun";
 import {
   checkEnd,
   computeBigintMinimumNumberOfBytes,
@@ -8,16 +7,39 @@ import {
 } from "./bytes";
 import type { KvKey, KvKeyPart } from "./types";
 
+class ArrayBufferBuilder {
+  #offset = 0;
+  #buffer: Buffer = Buffer.allocUnsafe(8192);
+
+  write(data: Uint8Array) {
+    if (this.#offset + data.byteLength > this.#buffer.byteLength) {
+      const newLength =
+        Math.ceil((this.#offset + data.byteLength) / 1024) * 1024;
+      const newBuffer = Buffer.allocUnsafe(newLength);
+      newBuffer.set(this.#buffer);
+      this.#buffer = newBuffer;
+    }
+    this.#buffer.set(data, this.#offset);
+    this.#offset += data.byteLength;
+    return data.byteLength;
+  }
+
+  flush(): Uint8Array {
+    const flushed = new Uint8Array(this.#offset);
+    flushed.set(this.#buffer.subarray(0, this.#offset)); // faster than Buffer.copy or Uint8Array.slice
+    this.#offset = 0;
+    return flushed;
+  }
+}
+
 export function packKey(kvKey: KvKey): Uint8Array {
-  const sink = new ArrayBufferSink();
-  sink.start({ asUint8Array: true });
+  const sink = new ArrayBufferBuilder();
   for (const kvKeyPart of kvKey) {
     writeKeyPart(sink, kvKeyPart);
-    // sink.write(packKeyPart(kvKeyPart));
   }
-  return sink.end() as Uint8Array;
+  return sink.flush();
 }
-function writeKeyPart(sink: ArrayBufferSink, kvKeyPart: KvKeyPart) {
+function writeKeyPart(sink: ArrayBufferBuilder, kvKeyPart: KvKeyPart) {
   if (kvKeyPart instanceof Uint8Array) {
     sink.write(single(Typecode.ByteString));
     writeZeroWithZeroFF(sink, kvKeyPart);
@@ -40,7 +62,7 @@ function writeKeyPart(sink: ArrayBufferSink, kvKeyPart: KvKeyPart) {
     sink.write(sub);
   }
 }
-function writeBigint(sink: ArrayBufferSink, bigint: bigint) {
+function writeBigint(sink: ArrayBufferBuilder, bigint: bigint) {
   const neg = bigint < 0;
   const abs = neg ? -bigint : bigint;
   const numBytes = BigInt(computeBigintMinimumNumberOfBytes(abs));
@@ -70,7 +92,7 @@ function negative(char: number) {
   shared[0] = 0xff - char;
   return shared;
 }
-function writeZeroWithZeroFF(sink: ArrayBufferSink, bytes: Uint8Array) {
+function writeZeroWithZeroFF(sink: ArrayBufferBuilder, bytes: Uint8Array) {
   const index = bytes.indexOf(0);
   if (index < 0) {
     sink.write(bytes);
