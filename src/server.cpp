@@ -45,8 +45,8 @@ class WatchState {
 };
 
 template <bool SSL>
-struct TemplatedPolyApp : PolyApp, uWS::TemplatedApp<SSL, TemplatedPolyApp<SSL>> {
-  using uWS::TemplatedApp<SSL, TemplatedPolyApp<SSL>>::TemplatedApp;
+struct TemplatedPolyApp : PolyApp, uWS::TemplatedApp<SSL> {
+  using uWS::TemplatedApp<SSL>::TemplatedApp;
   std::set<uWS::WebSocket<SSL, true, WatchState> *> watches;
 
   struct QueueState : QueueListener {
