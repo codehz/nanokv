@@ -103,14 +103,18 @@ export interface KvApi<
    * Retrieve the value and versionstamp for the given key from the database in the form of a {@link KvEntryMaybe}.
    * If no value exists for the key, the returned entry will have a null value and versionstamp.
    */
-  get<K extends E["key"]>(key: K): Promise<KvPairMaybe<SelectKvPair<E, K>>>;
+  get<K extends E["key"]>(
+    key: K,
+    signal?: AbortSignal
+  ): Promise<KvPairMaybe<SelectKvPair<E, K>>>;
   /**
    * Retrieve multiple values and versionstamp from the database in the form of an array of {@link KvEntryMaybe} objects.
    * The returned array will have the same length as the keys array, and the entries will be in the same order as the keys.
    * If no value exists for a given key, the returned entry will have a null value and versionstamp.
    */
   getMany<Ks extends E["key"][] | []>(
-    keys: Ks
+    keys: Ks,
+    signal?: AbortSignal
   ): Promise<{
     [N in keyof Ks]: KvPairMaybe<SelectKvPair<E, Ks[N]>>;
   }>;
@@ -130,7 +134,7 @@ export interface KvApi<
   set<K extends E["key"]>(
     key: K,
     value: ValueFotKvPair<E, K>,
-    options?: { expireIn?: number }
+    options?: { expireIn?: number; signal?: AbortSignal }
   ): Promise<KvCommitResult | KvCommitError>;
   /**
    * Delete the value for the given key from the database.
@@ -139,7 +143,10 @@ export interface KvApi<
    * @param key - The key to delete.
    * @return A promise resolving to an object containing a boolean indicating whether the operation was successful, and the versionstamp of the deleted key-value entry.
    */
-  delete(key: E["key"]): Promise<KvCommitResult | KvCommitError>;
+  delete(
+    key: E["key"],
+    signal?: AbortSignal
+  ): Promise<KvCommitResult | KvCommitError>;
   /**
    * Retrieve a list of keys in the database.
    * The returned list is a NanoStream which can be used to iterate over the entries in the database.
@@ -348,11 +355,15 @@ export class NanoKV<
     );
   }
 
-  async #snapshot_read(ranges: RawReadRange[]): Promise<RawKvEntry[][]> {
+  async #snapshot_read(
+    ranges: RawReadRange[],
+    signal?: AbortSignal
+  ): Promise<RawKvEntry[][]> {
     const request = this.#protocol.encodeSnapshotRead(ranges);
     const res = await fetch(`${this.endpoint}/snapshot_read`, {
       method: "POST",
       body: request,
+      signal,
     });
     if (res.status === 200) {
       const response = await res.arrayBuffer();
@@ -361,16 +372,20 @@ export class NanoKV<
       throw new Error(await res.text());
     }
   }
-  async #atomic_write(param: {
-    checks?: RawCheck[];
-    mutations?: RawMutation[];
-    enqueues?: RawEnqueue[];
-    dequeues?: RawDequeue[];
-  }): Promise<KvCommitResult | KvCommitError> {
+  async #atomic_write(
+    param: {
+      checks?: RawCheck[];
+      mutations?: RawMutation[];
+      enqueues?: RawEnqueue[];
+      dequeues?: RawDequeue[];
+    },
+    signal?: AbortSignal
+  ): Promise<KvCommitResult | KvCommitError> {
     const request = this.#protocol.encodeAtomicWrite(param);
     const res = await fetch(`${this.endpoint}/atomic_write`, {
       method: "POST",
       body: request,
+      signal,
     });
     if (res.status === 200) {
       const response = await res.arrayBuffer();
@@ -381,9 +396,13 @@ export class NanoKV<
   }
 
   async get<K extends E["key"]>(
-    key: K
+    key: K,
+    signal?: AbortSignal
   ): Promise<KvPairMaybe<SelectKvPair<E, K>>> {
-    const [[entry]] = await this.#snapshot_read([{ start: key, exact: true }]);
+    const [[entry]] = await this.#snapshot_read(
+      [{ start: key, exact: true }],
+      signal
+    );
     if (entry)
       return {
         key,
@@ -398,12 +417,14 @@ export class NanoKV<
   }
 
   async getMany<Ks extends E["key"][] | []>(
-    keys: Ks
+    keys: Ks,
+    signal?: AbortSignal
   ): Promise<{
     [N in keyof Ks]: KvPairMaybe<SelectKvPair<E, Ks[N]>>;
   }> {
     const result = await this.#snapshot_read(
-      keys.map((key) => ({ start: key, exact: true } as const))
+      keys.map((key) => ({ start: key, exact: true } as const)),
+      signal
     );
     return result.map(([entry], i) => {
       if (!entry)
@@ -423,24 +444,31 @@ export class NanoKV<
   async set<K extends E["key"]>(
     key: K,
     value: ValueFotKvPair<E, K>,
-    { expireIn }: { expireIn?: number } = {}
+    { expireIn, signal }: { expireIn?: number; signal?: AbortSignal } = {}
   ): Promise<KvCommitResult | KvCommitError> {
-    return await this.#atomic_write({
-      mutations: [
-        {
-          key,
-          type: MutationType.SET,
-          value,
-          expired_at: expireIn ? Date.now() + expireIn : undefined,
-        },
-      ],
-    });
+    return await this.#atomic_write(
+      {
+        mutations: [
+          {
+            key,
+            type: MutationType.SET,
+            value,
+            expired_at: expireIn ? Date.now() + expireIn : undefined,
+          },
+        ],
+      },
+      signal
+    );
   }
 
-  async delete(key: E["key"]): Promise<KvCommitResult | KvCommitError> {
-    return await this.#atomic_write({
-      mutations: [{ key, type: MutationType.DELETE }],
-    });
+  async delete(
+    key: E["key"],
+    signal?: AbortSignal
+  ): Promise<KvCommitResult | KvCommitError> {
+    return await this.#atomic_write(
+      { mutations: [{ key, type: MutationType.DELETE }] },
+      signal
+    );
   }
 
   list<K extends E["key"], P extends KvKeyPrefix<K>>(
@@ -459,21 +487,25 @@ export class NanoKV<
     if (batchSize <= 0 || batchSize >= 1024 || !Number.isFinite(batchSize)) {
       batchSize = 1024;
     }
+    const lifetime = new AbortController();
     return new NanoStream<SelectKvPairByPrefix<E, P>>({
       pull: async (controller) => {
-        const [values] = await this.#snapshot_read([
-          {
-            ...base,
-            ...(cursor
-              ? reverse
-                ? { end: cursor }
-                : { start: Buffer.concat([packKey(cursor), START]) }
-              : undefined),
-            reverse,
-            limit: Math.min(limit, batchSize),
-            exact: false,
-          },
-        ]);
+        const [values] = await this.#snapshot_read(
+          [
+            {
+              ...base,
+              ...(cursor
+                ? reverse
+                  ? { end: cursor }
+                  : { start: Buffer.concat([packKey(cursor), START]) }
+                : undefined),
+              reverse,
+              limit: Math.min(limit, batchSize),
+              exact: false,
+            },
+          ],
+          lifetime.signal
+        );
         controller.enqueueChunk(values as any);
         if (values.length == batchSize && limit > batchSize) {
           cursor = values[values.length - 1].key;
@@ -481,6 +513,9 @@ export class NanoKV<
         } else {
           controller.close();
         }
+      },
+      cancel() {
+        lifetime.abort();
       },
     });
   }
@@ -647,12 +682,15 @@ class SubspaceProxy<
   set<K extends E["key"]>(
     key: K,
     value: ValueFotKvPair<E, K>,
-    options?: { expireIn?: number }
+    options?: { expireIn?: number; signal?: AbortSignal }
   ): Promise<KvCommitResult | KvCommitError> {
     return this.#parent.set([...this.#prefix, ...key], value, options);
   }
-  delete(key: E["key"]): Promise<KvCommitResult | KvCommitError> {
-    return this.#parent.delete([...this.#prefix, ...key]);
+  delete(
+    key: E["key"],
+    signal?: AbortSignal
+  ): Promise<KvCommitResult | KvCommitError> {
+    return this.#parent.delete([...this.#prefix, ...key], signal);
   }
   list<K extends E["key"], P extends KvKeyPrefix<K>>(
     selector: KvListSelector<K, P>,

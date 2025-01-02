@@ -101,20 +101,26 @@ export class AtomicOperationImpl<E extends KvEntry, Q extends KvQueueEntry>
   #dequeues: RawDequeue[] = [];
 
   /** @hidden */
-  #committer: (param: {
-    checks: RawCheck[];
-    mutations: RawMutation[];
-    enqueues: RawEnqueue[];
-    dequeues: RawDequeue[];
-  }) => Promise<KvCommitResult | KvCommitError>;
+  #committer: (
+    param: {
+      checks: RawCheck[];
+      mutations: RawMutation[];
+      enqueues: RawEnqueue[];
+      dequeues: RawDequeue[];
+    },
+    signal?: AbortSignal
+  ) => Promise<KvCommitResult | KvCommitError>;
 
   constructor(
-    committer: (param: {
-      checks?: RawCheck[];
-      mutations?: RawMutation[];
-      enqueues?: RawEnqueue[];
-      dequeues?: RawDequeue[];
-    }) => Promise<KvCommitResult | KvCommitError>
+    committer: (
+      param: {
+        checks?: RawCheck[];
+        mutations?: RawMutation[];
+        enqueues?: RawEnqueue[];
+        dequeues?: RawDequeue[];
+      },
+      signal?: AbortSignal
+    ) => Promise<KvCommitResult | KvCommitError>
   ) {
     this.#committer = committer;
   }
@@ -164,13 +170,16 @@ export class AtomicOperationImpl<E extends KvEntry, Q extends KvQueueEntry>
     return this;
   }
 
-  commit(): Promise<KvCommitResult | KvCommitError> {
-    return this.#committer({
-      checks: this.#checks,
-      mutations: this.#mutations,
-      enqueues: this.#enqueues,
-      dequeues: this.#dequeues,
-    });
+  commit(signal?: AbortSignal): Promise<KvCommitResult | KvCommitError> {
+    return this.#committer(
+      {
+        checks: this.#checks,
+        mutations: this.#mutations,
+        enqueues: this.#enqueues,
+        dequeues: this.#dequeues,
+      },
+      signal
+    );
   }
   merge(operation: AtomicOperation): this {
     const { checks, mutations, enqueues, dequeues } = operation.dump();
