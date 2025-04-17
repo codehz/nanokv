@@ -2,8 +2,12 @@
 #include <flatbuffers/flatbuffers.h>
 #include <leveldb/db.h>
 
-#include <algorithm>
+#include <version>
+#ifdef __cpp_lib_byteswap
 #include <bit>
+#else
+#include <algorithm>
+#endif
 #include <concepts>
 #include <string_view>
 

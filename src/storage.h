@@ -1,11 +1,8 @@
 #pragma once
 #include <leveldb/db.h>
 
-#include <map>
 #include <memory>
 #include <mutex>
-#include <string_view>
-#include <vector>
 
 #include "schema_generated.h"
 #include "shared.h"

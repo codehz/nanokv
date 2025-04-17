@@ -1,9 +1,7 @@
 #pragma once
 #include <stdexcept>
-#include <string>
 
 namespace nanokv {
-using namespace std::string_literals;
 struct TypeError : std::runtime_error {
   using std::runtime_error::runtime_error;
 };
