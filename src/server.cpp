@@ -271,47 +271,50 @@ inline void initApp(Server *server, T &app, uint16_t port) {
                                                    }
                                                  }
                                                }})
-      .template ws<WatchState>(
-          "/watch", {.maxPayloadLength         = server->opts.max_payload_size,
-                     .idleTimeout              = 10,
-                     .maxBackpressure          = server->opts.max_backpressure,
-                     .closeOnBackpressureLimit = true,
-                     .open                     = [&app](auto *ws) { app.watches.insert(ws); },
-                     .message =
-                         [=](auto *ws, std::string_view message, uWS::OpCode opCode) {
-                           if (opCode != uWS::BINARY) {
-                             ws->end(1007, "Invalid message type");
-                             return;
-                           }
-                           auto request = parseBuffer<packet::Watch>(message);
-                           if (!request) {
-                             ws->end(1007, "Invalid message type");
-                             return;
-                           }
-                           try {
-                             auto id = request->id();
-                             _CHECK_FIELD(request, keys, Watch);
-                             if (id) {
-                               for (auto key : *request->keys()) {
-                                 _CHECK_FIELD(key, key, WatchKey);
-                                 ws->getUserData()->subscribe(ToStringView(*key->key()));
-                               }
-                               flatbuffers::FlatBufferBuilder builder;
-                               builder.Finish(Storage::instance->watch_fetch(builder, request));
-                               auto response = builder.GetBufferSpan();
-                               ws->send(ToStringView(response));
-                             } else {
-                               for (auto key : *request->keys()) {
-                                 _CHECK_FIELD(key, key, WatchKey);
-                                 ws->getUserData()->unsubscribe(ToStringView(*key->key()));
-                               }
-                             }
-                           } catch (std::runtime_error const &e) {
-                             ws->end(1007, e.what());
-                             return;
-                           }
-                         },
-                     .close = [&app](auto *ws, int code, std::string_view message) { app.watches.erase(ws); }})
+      .template ws<WatchState>("/watch", {.maxPayloadLength         = server->opts.max_payload_size,
+                                          .idleTimeout              = 120,
+                                          .maxBackpressure          = server->opts.max_backpressure,
+                                          .closeOnBackpressureLimit = true,
+                                          .open                     = [&app](auto *ws) { app.watches.insert(ws); },
+                                          .message =
+                                              [=](auto *ws, std::string_view message, uWS::OpCode opCode) {
+                                                if (opCode != uWS::BINARY) {
+                                                  ws->end(1007, "Invalid message type");
+                                                  return;
+                                                }
+                                                auto request = parseBuffer<packet::Watch>(message);
+                                                if (!request) {
+                                                  ws->end(1007, "Invalid message type");
+                                                  return;
+                                                }
+                                                try {
+                                                  auto id = request->id();
+                                                  _CHECK_FIELD(request, keys, Watch);
+                                                  if (id) {
+                                                    for (auto key : *request->keys()) {
+                                                      _CHECK_FIELD(key, key, WatchKey);
+                                                      ws->getUserData()->subscribe(ToStringView(*key->key()));
+                                                    }
+                                                    flatbuffers::FlatBufferBuilder builder;
+                                                    builder.Finish(Storage::instance->watch_fetch(builder, request));
+                                                    auto response = builder.GetBufferSpan();
+                                                    ws->send(ToStringView(response));
+                                                  } else {
+                                                    for (auto key : *request->keys()) {
+                                                      _CHECK_FIELD(key, key, WatchKey);
+                                                      ws->getUserData()->unsubscribe(ToStringView(*key->key()));
+                                                    }
+                                                  }
+                                                } catch (std::runtime_error const &e) {
+                                                  ws->end(1007, e.what());
+                                                  return;
+                                                }
+                                              },
+                                          .close =
+                                              [&app](auto *ws, int code, std::string_view message) {
+                                                spdlog::info("Watch connection closed with code {}", code);
+                                                app.watches.erase(ws);
+                                              }})
       .listen(port, [=](auto *listen_socket) {
         if (listen_socket) {
           spdlog::info("Listening on port {}", port);
