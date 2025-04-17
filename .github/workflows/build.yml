@@ -28,10 +28,10 @@ jobs:
             arch: x86_64
           - os: ubuntu-24.04-arm
             toolchain: gcc
-            arch: x86_64
+            arch: arm64
           - os: ubuntu-24.04-arm
             toolchain: clang
-            arch: x86_64
+            arch: arm64
           - os: macos-latest
             toolchain: clang
             arch: arm64
@@ -67,7 +67,7 @@ jobs:
             xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}-${{ matrix.mode }}
             xmake-packages-${{ runner.os }}-${{ matrix.cfg.toolchain }}-${{ matrix.cfg.arch }}
       - name: Setup ${{ matrix.cfg.toolchain }} ${{ matrix.cfg.arch }}
-        run: xmake f -y --toolchain=${{ matrix.cfg.toolchain }} --arch=${{ matrix.cfg.arch }} --mode=${{ matrix.mode }}
+        run: xmake f -vy --toolchain=${{ matrix.cfg.toolchain }} --arch=${{ matrix.cfg.arch }} --mode=${{ matrix.mode }}
       - name: Build
         run: xmake -vy
       - name: Install to temp
