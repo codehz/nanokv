@@ -31,6 +31,8 @@ int main(int argc, char *argv[]) {
     {{"ssl-ciphers", 'S'},
      copt.ssl_ciphers,
      "ssl ciphers names (default 'TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256')"},
+    {{"max-payload-size"}, copt.max_payload_size, "max payload size in bytes"},
+    {{"max-backpressure"}, copt.max_backpressure, "max backpressure in bytes"},
   };
 
   spdlog::set_pattern("[%H:%M:%S %z] [thread %t] %v");

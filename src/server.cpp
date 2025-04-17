@@ -108,7 +108,7 @@ using TCPApp = TemplatedPolyApp<false>;
 using SSLApp = TemplatedPolyApp<true>;
 
 Server::Server(ServerCluster *cluster, ServerOptions const &opts)
-    : cluster{cluster}, thread{[this, &opts]() {
+    : opts(opts), cluster{cluster}, thread{[this, &opts]() {
         loop = uWS::Loop::get();
         if (opts.ssl) {
           SSLApp app{{
@@ -272,9 +272,9 @@ inline void initApp(Server *server, T &app, uint16_t port) {
                                                  }
                                                }})
       .template ws<WatchState>(
-          "/watch", {.maxPayloadLength         = 1024 * 1024,
+          "/watch", {.maxPayloadLength         = server->opts.max_payload_size,
                      .idleTimeout              = 10,
-                     .maxBackpressure          = 1024 * 1024,
+                     .maxBackpressure          = server->opts.max_backpressure,
                      .closeOnBackpressureLimit = true,
                      .open                     = [&app](auto *ws) { app.watches.insert(ws); },
                      .message =

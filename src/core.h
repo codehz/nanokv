@@ -20,6 +20,8 @@ struct CoreOptions final {
   std::optional<std::string> key;
   std::optional<std::string> passphrase;
   std::optional<std::string> ssl_ciphers;
+  std::optional<uint32_t>    max_payload_size;
+  std::optional<uint32_t>    max_backpressure;
 
   ClusterOptions cluster;
 

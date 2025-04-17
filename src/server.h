@@ -20,6 +20,8 @@ struct ServerOptions final {
   };
   uint16_t                  port;
   std::optional<SSLOptions> ssl;
+  uint32_t                  max_payload_size;
+  uint32_t                  max_backpressure;
 };
 
 struct ClusterOptions final {
@@ -47,6 +49,7 @@ class Server {
   std::thread    thread;
 
  public:
+  ServerOptions const &opts;
   Server(ServerCluster *cluster, ServerOptions const &opts);
   void close();
   void join();
