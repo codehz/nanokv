@@ -26,12 +26,21 @@ jobs:
           - os: ubuntu-latest
             toolchain: clang
             arch: x86_64
+          - os: ubuntu-24.04-arm
+            toolchain: gcc
+            arch: x86_64
+          - os: ubuntu-24.04-arm
+            toolchain: clang
+            arch: x86_64
           - os: macos-latest
             toolchain: clang
             arch: arm64
           - os: windows-latest
             toolchain: msvc
             arch: x86
+          - os: windows-11-arm
+            toolchain: msvc
+            arch: arm64
           - os: windows-latest
             toolchain: msvc
             arch: x64
