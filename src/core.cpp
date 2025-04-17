@@ -102,7 +102,6 @@ void Core::cleanup_expired_keys(us_timer_t *timer) {
     storage.cleanup_expired(*map, next);
     rerun = key_expires_timer.schedule(next);
     if (!map->empty()) {
-      spdlog::info("Drop {} expired entries", map->size());
       cluster.dispatch_updates(std::move(map));
     }
   } while (rerun);
