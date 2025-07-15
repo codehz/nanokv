@@ -9,7 +9,7 @@
 namespace nanokv {
 
 ClusterOptions const &CoreOptions::init_cluster() & {
-  cluster.server.port = port.value_or(2256);
+  cluster.server.port             = port.value_or(2256);
   cluster.server.max_payload_size = max_payload_size.value_or(1024 * 1024);
   cluster.server.max_backpressure = max_backpressure.value_or(1024 * 1024);
   if (cert && key) {
